@@ -205,40 +205,34 @@ export function applyNeighborGravity(
     // (Any particle outside this radius we deliberately ignore, so 3×3 is sufficient.)
     const R = cellSize;
 
-    // for (const a of particles) {
     const gx = clampInt(Math.floor(thisParticle.x / cellSize), cols);
     const gy = clampInt(Math.floor(thisParticle.y / cellSize), rows);
 
     let ax = 0;
     let ay = 0;
 
-    // 3×3 neighbor block
-    for (let dy = -1; dy <= 1; dy++) {
-        const ny = gy + dy;
-        if (ny < 0 || ny >= rows) continue;
-        for (let dx = -1; dx <= 1; dx++) {
-            const nx = gx + dx;
-            if (nx < 0 || nx >= cols) continue;
+    
+    forEachNeighbor(grid, gx, gy, (cell) => {
+        for (let i = 0; i < cell.length; i++) {
+        // for (const otherParticle of cell) {
+            const otherParticle = cell[i];
+            if (otherParticle === thisParticle) continue;
 
-            const cell = cells[ny * cols + nx];
-            for (const otherParticle of cell) {
-                if (otherParticle === thisParticle) continue;
-                const ddx = otherParticle.x - thisParticle.x;
-                const ddy = otherParticle.y - thisParticle.y;
-                const r2 = ddx * ddx + ddy * ddy;
-                if (r2 > R * R || r2 === 0) continue;
+            const ddx = otherParticle.x - thisParticle.x;
+            const ddy = otherParticle.y - thisParticle.y;
+            const r2 = ddx * ddx + ddy * ddy;
+            if (r2 > R * R || r2 === 0) continue;
 
-                // Plummer-softened gravity
-                // 1/(r² + ε²) with sqrt for direction
-                const invLen = 1 / Math.sqrt(r2 + soft2);
-                const invLen2 = invLen * invLen;
-                // acceleration toward otherParticle, magnitude G / (r² + ε²)
-                const mag = G * invLen2;
-                ax += (ddx * invLen) * mag;
-                ay += (ddy * invLen) * mag;
-            }
+            // Plummer-softened gravity
+            // 1/(r² + ε²) with sqrt for direction
+            const invLen = 1 / Math.sqrt(r2 + soft2);
+            const invLen2 = invLen * invLen;
+            // acceleration toward otherParticle, magnitude G / (r² + ε²)
+            const mag = G * invLen2;
+            ax += (ddx * invLen) * mag;
+            ay += (ddy * invLen) * mag;
         }
-    }
+    });
 
     // Clamp acceleration magnitude
     const a2 = ax * ax + ay * ay;
