@@ -1,5 +1,5 @@
 const touchR2 = 0.1;
-const collisionEvents: CollisionEvent[] = [];
+let collisionEvents: CollisionEvent[] = [];
 
 export interface Particle {
     id: number;
@@ -238,7 +238,7 @@ export function applyNeighborGravity(
             if (r2 > R * R || r2 === 0) continue;
 
             // Plummer-softened gravity
-            const invR2 = 1 / (r2 + soft2);                         // 1/(r²+ε²)
+            const invR2 = 1 / (r2 + soft2);                          // 1/(r²+ε²)
             const invLen = Math.sqrt(invR2);                        // 1/√(r²+ε²)
             const mag = G * otherParticle.mass * invR2 * invLen;    // G / (r²+ε²)^1.5
             ax += ddx * mag;
@@ -333,6 +333,8 @@ export function resolveCollisions(
         winner.vx = (winner.mass * winner.vx + victim.mass * victim.vx) / m;
         winner.vy = (winner.mass * winner.vx + victim.mass * victim.vx) / m;
     }
+
+    collisionEvents = [];
 }
 
 
