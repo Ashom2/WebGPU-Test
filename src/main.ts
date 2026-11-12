@@ -1,5 +1,6 @@
 import { CheckWebGPU } from './helper';
-import { Shaders } from './shaders';
+import vertexShaderCode from './shaders/particle.vert.wgsl?raw';
+import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
 
 interface Particle {
     x: number;
@@ -88,10 +89,8 @@ const InitWebGPU = async () => {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
-    const shader = Shaders();
-    const vertexModule = device.createShaderModule({ code: shader.vertex });
-    const fragmentModule = device.createShaderModule({ code: shader.fragment });
-
+    const vertexModule = device.createShaderModule({ code: vertexShaderCode });
+    const fragmentModule = device.createShaderModule({ code: fragmentShaderCode });
 
     pipelineRef = device.createRenderPipeline({
         layout:'auto',
