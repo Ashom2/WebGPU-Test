@@ -75,7 +75,7 @@ function updateParticle(
     else if (p.y > height + m)  p.y = -m;
 
     // Apply weak drag
-    // p.vx *= 0.99; p.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
+    p.vx *= 0.99; p.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
 }
 
 export function updateParticles(
@@ -211,10 +211,8 @@ export function applyNeighborGravity(
     let ax = 0;
     let ay = 0;
 
-    
     forEachNeighbor(grid, gx, gy, (cell) => {
         for (let i = 0; i < cell.length; i++) {
-        // for (const otherParticle of cell) {
             const otherParticle = cell[i];
             if (otherParticle === thisParticle) continue;
 
@@ -224,13 +222,11 @@ export function applyNeighborGravity(
             if (r2 > R * R || r2 === 0) continue;
 
             // Plummer-softened gravity
-            // 1/(r² + ε²) with sqrt for direction
-            const invLen = 1 / Math.sqrt(r2 + soft2);
-            const invLen2 = invLen * invLen;
-            // acceleration toward otherParticle, magnitude G / (r² + ε²)
-            const mag = G * invLen2;
-            ax += (ddx * invLen) * mag;
-            ay += (ddy * invLen) * mag;
+            const invR2 = 1 / (r2 + soft2);     // 1/(r²+ε²)
+            const invLen = Math.sqrt(invR2);    // 1/√(r²+ε²)
+            const mag = G * invR2 * invLen;     // G / (r²+ε²)^1.5
+            ax += ddx * mag;
+            ay += ddy * mag;
         }
     });
 

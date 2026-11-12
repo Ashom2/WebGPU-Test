@@ -11,11 +11,11 @@ import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
 
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 10_000;
-const CELL_SIZE = 64;
+const CELL_SIZE = 32;
 const GRAVITY = {
     G: 200,         // tune: 50-1000
     softening: 4,   // px; keeps close pairs from exploding
-    maxAccel: 400,  // px/s²
+    maxAccel: 100,  // px/s²
 };
 
 // Reference state holder
