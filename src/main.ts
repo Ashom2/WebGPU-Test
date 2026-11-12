@@ -2,8 +2,7 @@ import {
     initParticles, 
     updateParticles, 
     packParticles, 
-    Particle,
-    ChunkGrid,
+    ParticleSystem,
 } from './particles';
 import { CheckWebGPU } from './helper';
 import vertexShaderCode from './shaders/particle.vert.wgsl?raw';
@@ -23,8 +22,7 @@ let instanceBufferRef: GPUBuffer | null = null;
 let bindGroupRef: GPUBindGroup | null = null;
 let formatRef: GPUTextureFormat = 'bgra8unorm';
 
-let particles: Particle[] = [];
-let gridRef: ChunkGrid | null = null;
+let particleSys: ParticleSystem | null = null;
 let lastTime = 0;
 
 const InitWebGPU = async () => {
@@ -123,7 +121,7 @@ const DrawParticles = () => {
     );
 
     // Upload instance data
-    const packed = packParticles(particles);
+    const packed = packParticles(particleSys!.particles);
     device.queue.writeBuffer(
         instanceBuffer, 
         0, 
@@ -146,7 +144,7 @@ const DrawParticles = () => {
     renderPass.setBindGroup(0, bindGroup);
     renderPass.setVertexBuffer(0, instanceBuffer);
     // 6 vertices per quad, one instance per particle
-    renderPass.draw(6, particles.length, 0, 0);
+    renderPass.draw(6, particleSys!.particles.length, 0, 0);
     renderPass.end();
 
     device.queue.submit([commandEncoder.finish()]);
@@ -157,7 +155,7 @@ const frame = (now: number) => {
     const dt = lastTime === 0 ? 0 : Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
-    updateParticles(particles, dt, canvas.width, canvas.height, gridRef!);
+    updateParticles(particleSys!, dt, canvas.width, canvas.height);
     DrawParticles();
 
     requestAnimationFrame(frame);
@@ -166,9 +164,7 @@ const frame = (now: number) => {
 const main = async () => {
     await InitWebGPU();
     const canvas = canvasRef!;
-    const particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
-    particles = particleSys.particles;
-    gridRef = particleSys.grid;
+    particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE);
     lastTime = 0;
     requestAnimationFrame(frame);
 };
@@ -177,9 +173,7 @@ main().catch(console.error);
 
 document.querySelector('#id-btn')?.addEventListener('click', () => {
     const canvas = canvasRef!;
-    const particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
-    particles = particleSys.particles;
-    gridRef = particleSys.grid;
+    particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE);
     // Reset clock
     lastTime = 0;
 });

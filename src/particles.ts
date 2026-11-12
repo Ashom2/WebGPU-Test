@@ -27,8 +27,8 @@ export function initParticles(
     count: number, 
     width: number, 
     height: number,
-    maxSpeed = 50,
     cellSize = 64,
+    maxSpeed = 50,
 ): ParticleSystem {
     const ps: Particle[] = [];
     for (let i = 0; i < count; i++) {
@@ -49,20 +49,21 @@ export function initParticles(
 
     // Create chunk grid
     const grid = createChunkGrid(width, height, cellSize);
+    const particleSystem = { particles: ps, grid };
     // Assign particles to respective cells
-    updateChunks(grid, ps);
+    updateChunks(particleSystem);
 
-    return { particles: ps, grid };
+    return particleSystem;
 }
 
 export function updateParticles(
-    particles: Particle[],
+    particleSystem: ParticleSystem,
     dt: number,
     width: number,
     height: number,
-    grid: ChunkGrid,
 ): void {
-    for (const p of particles) {
+
+    for (const p of particleSystem.particles) {
         p.x += p.vx * dt;
         p.y += p.vy * dt;
 
@@ -75,7 +76,7 @@ export function updateParticles(
         else if (p.y > height + m)  p.y = -m;
     }
 
-    updateChunks(grid, particles);
+    updateChunks(particleSystem);
 }
 
 /** Pack particles into a Float32Array: [x, y, radius, pad, r, g, b, a] per instance. */
@@ -111,11 +112,11 @@ export function createChunkGrid(
 }
 
 /** Clear the grid and re-bin every particle by its current position. */
-export function updateChunks(grid: ChunkGrid, particles: Particle[]): void {
-    for (const cell of grid.cells) cell.length = 0;
+export function updateChunks(particleSystem: ParticleSystem): void {
+    for (const cell of particleSystem.grid.cells) cell.length = 0;
 
-    const { cellSize, cols, rows, cells } = grid;
-    for (const p of particles) {
+    const { cellSize, cols, rows, cells } = particleSystem.grid;
+    for (const p of particleSystem.particles) {
         const gx = clampInt(Math.floor(p.x / cellSize), cols);
         const gy = clampInt(Math.floor(p.y / cellSize), rows);
         cells[gy * cols + gx].push(p);
