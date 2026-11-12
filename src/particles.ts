@@ -87,11 +87,9 @@ export function updateParticles(
 ): void {
     const { particles, grid } = particleSystem;
 
-    for (const p of particles) {
-        updateParticle(p, grid, params, dt, width, height)
+    for (let i = 0; i < particles.length; i++) {
+        updateParticle(particles[i], grid, params, dt, width, height);
     }
-
-    updateChunks(particleSystem);
 }
 
 /** Pack particles into a Float32Array: [x, y, radius, pad, r, g, b, a] per instance. */

@@ -1,6 +1,7 @@
 import { 
     initParticles, 
     updateParticles, 
+    updateChunks,
     packParticles, 
     ParticleSystem,
 } from './particles';
@@ -155,13 +156,33 @@ const DrawParticles = () => {
     device.queue.submit([commandEncoder.finish()]);
 }
 
+const perf = {
+    updateMs: 0,
+    chunkMs: 0,
+    packMs: 0,
+    drawMs: 0,
+    frames: 0,
+    lastReport: performance.now(),
+};
+
+
+/** Use browser dev tools to assess performance (in marker chart). */
 const frame = (now: number) => {
     const canvas = canvasRef!;
     const dt = lastTime === 0 ? 0 : Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
+    performance.mark('frame-start');
     updateParticles(particleSys!, GRAVITY, dt, canvas.width, canvas.height);
+    performance.mark('update-end');
+    updateChunks(particleSys!);
+    performance.mark('chunk-end');
     DrawParticles();
+    performance.mark('frame-end');
+
+    performance.measure('update', 'frame-start', 'update-end');
+    performance.measure('chunk',  'update-end',  'chunk-end');
+    performance.measure('draw',   'chunk-end',   'frame-end');
 
     requestAnimationFrame(frame);
 };
