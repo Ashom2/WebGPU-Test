@@ -1,12 +1,19 @@
-import { initParticles, updateParticles, packParticles, Particle } from './particles';
+import { 
+    initParticles, 
+    updateParticles, 
+    packParticles, 
+    Particle,
+    ChunkGrid,
+} from './particles';
 import { CheckWebGPU } from './helper';
 import vertexShaderCode from './shaders/particle.vert.wgsl?raw';
 import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
 
 const MAX_PARTICLES = 20_000;
 const PARTICLE_COUNT = 10_000;
+const CELL_SIZE = 64;
 
-// State holder
+// Reference state holder
 let deviceRef: GPUDevice | null = null;
 let pipelineRef: GPURenderPipeline | null = null;
 let contextRef: GPUCanvasContext | null = null;
@@ -17,6 +24,7 @@ let bindGroupRef: GPUBindGroup | null = null;
 let formatRef: GPUTextureFormat = 'bgra8unorm';
 
 let particles: Particle[] = [];
+let gridRef: ChunkGrid | null = null;
 let lastTime = 0;
 
 const InitWebGPU = async () => {
@@ -149,7 +157,7 @@ const frame = (now: number) => {
     const dt = lastTime === 0 ? 0 : Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
-    updateParticles(particles, dt, canvas.width, canvas.height);
+    updateParticles(particles, dt, canvas.width, canvas.height, gridRef!);
     DrawParticles();
 
     requestAnimationFrame(frame);
@@ -158,7 +166,9 @@ const frame = (now: number) => {
 const main = async () => {
     await InitWebGPU();
     const canvas = canvasRef!;
-    particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    const particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    particles = particleSys.particles;
+    gridRef = particleSys.grid;
     lastTime = 0;
     requestAnimationFrame(frame);
 };
@@ -167,7 +177,9 @@ main().catch(console.error);
 
 document.querySelector('#id-btn')?.addEventListener('click', () => {
     const canvas = canvasRef!;
-    particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    const particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    particles = particleSys.particles;
+    gridRef = particleSys.grid;
     // Reset clock
     lastTime = 0;
 });
