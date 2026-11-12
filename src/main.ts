@@ -8,9 +8,14 @@ import { CheckWebGPU } from './helper';
 import vertexShaderCode from './shaders/particle.vert.wgsl?raw';
 import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
 
-const MAX_PARTICLES = 20_000;
+const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 10_000;
 const CELL_SIZE = 64;
+const GRAVITY = {
+    G: 200,         // tune: 50-1000
+    softening: 4,   // px; keeps close pairs from exploding
+    maxAccel: 400,  // px/s²
+};
 
 // Reference state holder
 let deviceRef: GPUDevice | null = null;
@@ -155,7 +160,7 @@ const frame = (now: number) => {
     const dt = lastTime === 0 ? 0 : Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
-    updateParticles(particleSys!, dt, canvas.width, canvas.height);
+    updateParticles(particleSys!, GRAVITY, dt, canvas.width, canvas.height);
     DrawParticles();
 
     requestAnimationFrame(frame);

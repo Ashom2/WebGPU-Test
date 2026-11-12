@@ -7,6 +7,20 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
+-collisions
+
+-Calculate velocity then update position? or update position as we go (bad for parralel)?
+
+-Update chunks all at once (probably better design since this can't be parellised) or 
+
+-Sliders for parameters
+
+-Edge conditions
+    -gravity?
+    -wrap around
+    -despawn
+    -repel
+
 -use the packing / data type I devised in the boids report to help with spatial subdivision
 
 -make radius/size/density an int (0 should be no draw, 1 should be 1 pixel or whatever is most efficient)
@@ -19,6 +33,11 @@ These are just notes to self. Ignore.
 -additive blending of particles
 
 -particle bloom
+
+-for fun can try:
+    -softer force law
+    -damping / no damping
+    -velocity dependent drag towards the local mean
 
 -rendering each particle as a quad (current) vs rendering per pixel. we are rendering each particle as a quad. I want this to be able to handle millions of particles at once, so efficient methods are preferred. My reasoning then is that it would be more efficient to iterate over each particle on the GPU, and add color to the pixels it overlaps with.
 
@@ -40,3 +59,5 @@ could instead have particles coallesce like asteroids
 what makes a particle gravity simulation different from the universe simulations where galaxies arrange themselves into thin dense bands? Just scale? lack of collision?
 
 flying text that rearranges itself
+
+snowflake / coral formation
