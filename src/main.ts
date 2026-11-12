@@ -1,7 +1,10 @@
-import { initParticles, packParticles, Particle } from './particles';
+import { initParticles, updateParticles, packParticles, Particle } from './particles';
 import { CheckWebGPU } from './helper';
 import vertexShaderCode from './shaders/particle.vert.wgsl?raw';
 import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
+
+const MAX_PARTICLES = 2000;
+const PARTICLE_COUNT = 500;
 
 // State holder
 let deviceRef: GPUDevice | null = null;
@@ -9,8 +12,12 @@ let pipelineRef: GPURenderPipeline | null = null;
 let contextRef: GPUCanvasContext | null = null;
 let canvasRef: HTMLCanvasElement | null = null;
 let uniformBufferRef: GPUBuffer | null = null;
+let instanceBufferRef: GPUBuffer | null = null;
 let bindGroupRef: GPUBindGroup | null = null;
 let formatRef: GPUTextureFormat = 'bgra8unorm';
+
+let particles: Particle[] = [];
+let lastTime = 0;
 
 const InitWebGPU = async () => {
     const checkgpu = CheckWebGPU();
@@ -45,6 +52,13 @@ const InitWebGPU = async () => {
         usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
 
+    // Allocate the instance buffer ONCE, sized for MAX_PARTICLES.
+    const STRIDE = 8 * 4; // 8 floats per particle
+    instanceBufferRef = device.createBuffer({
+        size: MAX_PARTICLES * STRIDE,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+
     const vertexModule = device.createShaderModule({ code: vertexShaderCode });
     const fragmentModule = device.createShaderModule({ code: fragmentShaderCode });
 
@@ -54,7 +68,7 @@ const InitWebGPU = async () => {
             module: vertexModule,
             entryPoint: "main",
             buffers: [{
-                arrayStride: 8 * 4, // 8 floats per instance
+                arrayStride: STRIDE,
                 stepMode: 'instance',
                 attributes: [
                     { shaderLocation: 0, offset: 0,  format: 'float32x2' }, // position
@@ -85,12 +99,13 @@ const InitWebGPU = async () => {
     });
 }
 
-const RenderParticles = (particles: Particle[]) => {
+const DrawParticles = () => {
     const device = deviceRef!;
     const pipeline = pipelineRef!;
     const context = contextRef!;
     const canvas = canvasRef!;
     const uniformBuffer = uniformBufferRef!;
+    const instanceBuffer = instanceBufferRef!;
     const bindGroup = bindGroupRef!;
 
     // Update resolution
@@ -101,10 +116,6 @@ const RenderParticles = (particles: Particle[]) => {
 
     // Upload instance data
     const packed = packParticles(particles);
-    const instanceBuffer = device.createBuffer({
-        size: packed.byteLength,
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-    });
     device.queue.writeBuffer(
         instanceBuffer, 
         0, 
@@ -133,17 +144,30 @@ const RenderParticles = (particles: Particle[]) => {
     device.queue.submit([commandEncoder.finish()]);
 }
 
+const frame = (now: number) => {
+    const canvas = canvasRef!;
+    const dt = lastTime === 0 ? 0 : Math.min((now - lastTime) / 1000, 0.1);
+    lastTime = now;
+
+    updateParticles(particles, dt, canvas.width, canvas.height);
+    DrawParticles();
+
+    requestAnimationFrame(frame);
+};
+
 const main = async () => {
     await InitWebGPU();
     const canvas = canvasRef!;
-    const particles = initParticles(500, canvas.width, canvas.height);
-    RenderParticles(particles);
+    particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    // DrawParticles(particles);
+    lastTime = 0;
+    requestAnimationFrame(frame);
 };
 
-main();
+main().catch(console.error);
 
 document.querySelector('#id-btn')?.addEventListener('click', () => {
     const canvas = canvasRef!;
-    const particles = initParticles(500, canvas.width, canvas.height);
-    RenderParticles(particles);
+    const particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    DrawParticles();
 });
