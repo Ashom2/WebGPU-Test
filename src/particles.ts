@@ -25,7 +25,7 @@ export function initParticles(
             y: Math.random() * height,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            radius: 0.5 + Math.random() * 10,
+            radius: 0.5 + Math.random() * 4,
             r: Math.random(),
             g: Math.random(),
             b: Math.random(),

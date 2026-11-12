@@ -3,8 +3,8 @@ import { CheckWebGPU } from './helper';
 import vertexShaderCode from './shaders/particle.vert.wgsl?raw';
 import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
 
-const MAX_PARTICLES = 2000;
-const PARTICLE_COUNT = 500;
+const MAX_PARTICLES = 20_000;
+const PARTICLE_COUNT = 10_000;
 
 // State holder
 let deviceRef: GPUDevice | null = null;
@@ -159,7 +159,6 @@ const main = async () => {
     await InitWebGPU();
     const canvas = canvasRef!;
     particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
-    // DrawParticles(particles);
     lastTime = 0;
     requestAnimationFrame(frame);
 };
@@ -168,6 +167,7 @@ main().catch(console.error);
 
 document.querySelector('#id-btn')?.addEventListener('click', () => {
     const canvas = canvasRef!;
-    const particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
-    DrawParticles();
+    particles = initParticles(PARTICLE_COUNT, canvas.width, canvas.height);
+    // Reset clock
+    lastTime = 0;
 });
