@@ -1,5 +1,7 @@
-const touchR2 = 0.1;
-let collisionEvents: CollisionEvent[] = [];
+const touchR2 = 0.5;
+
+// "No target": this particle is not being absorbed by anyone
+const NONE = -1;
 
 export interface Particle {
     id: number;
@@ -19,7 +21,12 @@ export interface ChunkGrid {
 }
 
 export interface ParticleSystem {
+    // Current state. Invariant: particles[i].id === i
     particles: Particle[];
+    // Scratch buffer written by pass A (gravity), read by pass B (merge)
+    next: Particle[];
+    // target[i] = id of the particle that wants to absorb particle i, or NONE
+    target: Int32Array;
     grid: ChunkGrid;
 }
 
@@ -49,43 +56,112 @@ export function initParticles(
         });
     }
 
+    // Preallocate the scratch buffers once; nothing is allocated per frame
+    const next = particles.map((p) => ({ ...p }));
+    const target = new Int32Array(count).fill(NONE);
+
     // Create chunk grid
     const grid = createChunkGrid(width, height, cellSize);
-    const particleSystem = { particles, grid };
+    const particleSystem = { particles, next, target, grid };
     // Assign particles to respective cells
     updateChunks(particleSystem);
 
     return particleSystem;
 }
 
+/**
+ * Pass A. Reads particles[i] (and its neighbors), writes ONLY next[i] and target[i].
+ * Gravity, integration, wrapping, and "who wants to absorb me?".
+ */
 function updateParticle(
-    p: Particle,
-    grid: ChunkGrid,
+    i: number,
+    system: ParticleSystem,
     params: GravityParams,
     dt: number,
     width: number,
     height: number,
 ): void {
-    // If it's destroyed, skip
-    if (p.mass == 0) return;
+    const { particles, next, target, grid } = system;
+    const p = particles[i];
+    const out = next[i];
 
-    // Update velocity from gravity
-    applyNeighborGravity(p, grid, params, dt);
+    // Start from the current state
+    out.x = p.x; out.y = p.y;
+    out.vx = p.vx; out.vy = p.vy;
+    out.mass = p.mass;
+
+    // If it's destroyed, skip
+    if (p.mass == 0) {
+        target[i] = NONE;
+        return;
+    }
+
+    // Update velocity from gravity (written to out), and find who wants to absorb us
+    target[i] = applyNeighborGravity(p, out, grid, params, dt, particles);
 
     // Update position according to velocity
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    out.x += out.vx * dt;
+    out.y += out.vy * dt;
 
     // Wrap around (use radius as margin so large circles fully exit first)
     const m = p.mass;
-    if (p.x < -m)               p.x = width + m;
-    else if (p.x > width + m)   p.x = -m;
+    if (out.x < -m)               out.x = width + m;
+    else if (out.x > width + m)   out.x = -m;
 
-    if (p.y < -m)               p.y = height + m;
-    else if (p.y > height + m)  p.y = -m;
+    if (out.y < -m)               out.y = height + m;
+    else if (out.y > height + m)  out.y = -m;
 
     // Apply weak drag
-    // p.vx *= 0.99; p.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
+    // out.vx *= 0.99; out.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
+}
+
+/**
+ * Pass B. Reads next[*] and target[*], writes ONLY particles[i].
+ * Either dies (absorbed), or collects the mass and momentum of everyone who targeted it.
+ */
+function mergeParticle(i: number, system: ParticleSystem): void {
+    const { particles, next, target, grid } = system;
+    const cur = particles[i];
+    const p = next[i];
+    const t = target[i];
+
+    // Already dead
+    if (p.mass === 0) return;
+
+    // Victim whose winner survives this frame: absorbed.
+    // (If the winner is itself a victim, we wait a frame, so mass never vanishes in a chain.)
+    if (t !== NONE && target[t] === NONE) {
+        cur.mass = 0;
+        return;
+    }
+
+    let m = p.mass;
+    let px = p.mass * p.vx;
+    let py = p.mass * p.vy;
+
+    // Only a "root" (not itself a victim) collects mass.
+    if (t === NONE) {
+        // Grid was built from the *old* positions, and so was target[], so look up by cur
+        const gx = clampInt(Math.floor(cur.x / grid.cellSize), grid.cols);
+        const gy = clampInt(Math.floor(cur.y / grid.cellSize), grid.rows);
+
+        forEachNeighbor(grid, gx, gy, (cell) => {
+            for (let k = 0; k < cell.length; k++) {
+                const q = cell[k].id;
+                if (target[q] !== i) continue;
+                const v = next[q];
+                // Momentum-conserving merge
+                m  += v.mass;
+                px += v.mass * v.vx;
+                py += v.mass * v.vy;
+            }
+        });
+    }
+
+    cur.x = p.x; cur.y = p.y;
+    cur.vx = px / m;
+    cur.vy = py / m;
+    cur.mass = m;
 }
 
 export function updateParticles(
@@ -95,13 +171,17 @@ export function updateParticles(
     width: number,
     height: number,
 ): void {
-    const { particles, grid } = particleSystem;
+    const { particles } = particleSystem;
 
+    // Pass A: gravity + integrate into next[], pick absorbers into target[]
     for (let i = 0; i < particles.length; i++) {
-        updateParticle(particles[i], grid, params, dt, width, height);
+        updateParticle(i, particleSystem, params, dt, width, height);
     }
 
-    resolveCollisions(particleSystem, collisionEvents);
+    // Pass B: resolve absorption back into particles[]
+    for (let i = 0; i < particles.length; i++) {
+        mergeParticle(i, particleSystem);
+    }
 }
 
 /** Pack particles into a Float32Array: [x, y, radius, pad, r, g, b, a] per instance. */
@@ -142,6 +222,7 @@ export function updateChunks(particleSystem: ParticleSystem): void {
 
     const { cellSize, cols, rows, cells } = particleSystem.grid;
     for (const p of particleSystem.particles) {
+        if (p.mass === 0) continue; // dead particles don't need to be found by anyone
         const gx = clampInt(Math.floor(p.x / cellSize), cols);
         const gy = clampInt(Math.floor(p.y / cellSize), rows);
         cells[gy * cols + gx].push(p);
@@ -202,13 +283,20 @@ export interface GravityParams {
 }
 
 // This was written by AI so don't trust it
+/**
+ * Accumulates gravity on `thisParticle` from its neighbors and writes the new velocity to `out`
+ * (never to thisParticle, so other particles can still read the old state).
+ * Returns the id of the strongest touching neighbor that outranks thisParticle, or NONE.
+ */
 export function applyNeighborGravity(
     thisParticle: Particle,
+    out: Particle,
     grid: ChunkGrid,
     params: GravityParams,
     dt: number, // delta time
-): void {
-    const { cellSize, cols, rows, cells } = grid;
+    particles: Particle[],
+): number {
+    const { cellSize, cols, rows } = grid;
     const G = params.G;
     const soft2 = params.softening * params.softening;
     const maxAcc2 = params.maxAccel * params.maxAccel;
@@ -224,13 +312,13 @@ export function applyNeighborGravity(
     const gy = clampInt(Math.floor(y / cellSize), rows);
 
     let ax = 0, ay = 0;
-
-    
+    let absorber = NONE;
 
     forEachNeighbor(grid, gx, gy, (cell) => {
         for (let i = 0; i < cell.length; i++) {
             const otherParticle = cell[i];
             if (otherParticle === thisParticle) continue;
+            if (otherParticle.mass === 0) continue;
 
             const ddx = otherParticle.x - x;
             const ddy = otherParticle.y - y;
@@ -244,15 +332,11 @@ export function applyNeighborGravity(
             ax += ddx * mag;
             ay += ddy * mag;
 
-            // Collision detection
-            if (r2 < touchR2) {
-                if (shouldAbsorb(thisParticle, otherParticle)) {
-                    // Is the absorber
-                    collisionEvents.push({ absorber: thisParticle.id, victim: otherParticle.id });
-                }
-                else {
-                    // Is the victim
-                    return;
+            // Collision detection: am I touching someone who outranks me?
+            // Keep only the strongest such neighbor. We never write to *them*.
+            if (r2 < touchR2 && shouldAbsorb(otherParticle, thisParticle)) {
+                if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
+                    absorber = otherParticle.id;
                 }
             }
         }
@@ -267,8 +351,10 @@ export function applyNeighborGravity(
     }
 
     // Apply to velocity. dt is handled by the caller via updateParticles
-    thisParticle.vx += ax * dt;
-    thisParticle.vy += ay * dt;
+    out.vx = thisParticle.vx + ax * dt;
+    out.vy = thisParticle.vy + ay * dt;
+
+    return absorber;
 }
 
 // returns true if `a` should absorb `b` (i.e. a "wins" the pair)
@@ -280,63 +366,6 @@ function shouldAbsorb(a: Particle, b: Particle): boolean {
     // Fallback on id
     return a.id < b.id;
 }
-
-export interface CollisionEvent {
-    // Index of the larger particle (absorber)
-    absorber: number;
-    // Index of the smaller particle (victim)
-    victim: number;
-}
-
-export function resolveCollisions(
-    system: ParticleSystem,
-    events: CollisionEvent[],
-): void {
-    const { particles } = system;
-
-    // For each victim, pick the single strongest absorber.
-    // key = victim index, value = absorber index.
-    const winnerForVictim = new Map<number, number>();
-
-    for (const ev of events) {
-        const prevAbsorber = winnerForVictim.get(ev.victim);
-        if (prevAbsorber === undefined) {
-            winnerForVictim.set(ev.victim, ev.absorber);
-            continue;
-        }
-        // Choose the "stronger" suitor: larger mass, tiebreak by lower id.
-        const cur = particles[prevAbsorber];
-        const cand = particles[ev.absorber];
-        if (
-            cand.mass > cur.mass ||
-            (cand.mass === cur.mass && cand.id < cur.id)
-        ) {
-            winnerForVictim.set(ev.victim, ev.absorber);
-        }
-    }
-
-    // Apply. Iterate victims in a deterministic order (id-sorted) for reproducibility.
-    const victims = [...winnerForVictim.keys()].sort(
-        (i, j) => particles[i].id - particles[j].id,
-    );
-    for (const vi of victims) {
-        const victim = particles[vi];
-        if (victim.mass <= 0) continue;           // guard: already consumed
-        const winnerIdx = winnerForVictim.get(vi)!;
-        const winner = particles[winnerIdx];
-        if (winner.mass <= 0) continue;           // guard: winner died earlier this frame
-
-        winner.mass += victim.mass;
-        victim.mass = 0;
-        // Optional: momentum-conserving merge
-        const m = winner.mass + victim.mass; // use pre-sum if you want total momentum
-        winner.vx = (winner.mass * winner.vx + victim.mass * victim.vx) / m;
-        winner.vy = (winner.mass * winner.vx + victim.mass * victim.vx) / m;
-    }
-
-    collisionEvents = [];
-}
-
 
 
 

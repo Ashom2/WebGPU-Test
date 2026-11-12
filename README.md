@@ -7,8 +7,6 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
--store "victim of" data for each particle, that can be checked at end of frame
-
 -Calculate velocity then update position? or update position as we go (bad for parralel)?
 
 -Sliders for parameters
