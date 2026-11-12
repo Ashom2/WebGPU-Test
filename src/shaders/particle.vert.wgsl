@@ -1,7 +1,6 @@
 struct Particle {
     position: vec2<f32>,
-    radius: f32,
-    _pad: f32,
+    mass: f32,
     color: vec4<f32>,
 };
 
@@ -17,7 +16,7 @@ struct VertexOut {
 fn main(
     @builtin(vertex_index)   vi       : u32,
     @location(0)             position : vec2<f32>,
-    @location(1)             radius   : f32,
+    @location(1)             mass     : f32,
     @location(2)             color    : vec4<f32>,
 ) -> VertexOut {
     // Unit quad (2 triangles) centered at origin
@@ -31,6 +30,7 @@ fn main(
     );
 
     let local = quad[vi];
+    let radius = sqrt(mass);
     let pixel = position + local * radius;
 
     // Convert pixel coords to clip space (-1,1)

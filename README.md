@@ -7,11 +7,9 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
--collisions
+-store "victim of" data for each particle, that can be checked at end of frame
 
 -Calculate velocity then update position? or update position as we go (bad for parralel)?
-
--Update chunks all at once (probably better design since this can't be parellised) or 
 
 -Sliders for parameters
 
@@ -48,6 +46,9 @@ These are just notes to self. Ignore.
 -particle particle particle mesh methods
 
 -seperate handling of largest particle clumps
+
+-Optimisations
+    -expand out neighbor search loop manually (this means we get to check for collisions only in our cell)
 
 # Idea
 Also just notes to self. Ignore.

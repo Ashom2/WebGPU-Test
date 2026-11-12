@@ -1,7 +1,12 @@
+const touchR2 = 0.1;
+const collisionEvents: CollisionEvent[] = [];
+
 export interface Particle {
+    id: number;
+    // birthTime: number;
     x: number; y: number;
     vx: number; vy: number;
-    radius: number;
+    mass: number;
     r: number; g: number; b: number; a: number;
 }
 
@@ -30,11 +35,13 @@ export function initParticles(
         const angle = Math.random() * Math.PI * 2;
         const speed = Math.random() * maxSpeed;
         particles.push({
+            id: i,
+            // birthTime: 0,
             x: Math.random() * width,
             y: Math.random() * height,
             vx: Math.cos(angle) * speed,
             vy: Math.sin(angle) * speed,
-            radius: 0.5 + Math.random() * 2,
+            mass: 1,
             r: Math.random(),
             g: Math.random(),
             b: Math.random(),
@@ -59,6 +66,9 @@ function updateParticle(
     width: number,
     height: number,
 ): void {
+    // If it's destroyed, skip
+    if (p.mass == 0) return;
+
     // Update velocity from gravity
     applyNeighborGravity(p, grid, params, dt);
 
@@ -67,7 +77,7 @@ function updateParticle(
     p.y += p.vy * dt;
 
     // Wrap around (use radius as margin so large circles fully exit first)
-    const m = p.radius;
+    const m = p.mass;
     if (p.x < -m)               p.x = width + m;
     else if (p.x > width + m)   p.x = -m;
 
@@ -75,7 +85,7 @@ function updateParticle(
     else if (p.y > height + m)  p.y = -m;
 
     // Apply weak drag
-    p.vx *= 0.99; p.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
+    // p.vx *= 0.99; p.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
 }
 
 export function updateParticles(
@@ -90,6 +100,8 @@ export function updateParticles(
     for (let i = 0; i < particles.length; i++) {
         updateParticle(particles[i], grid, params, dt, width, height);
     }
+
+    resolveCollisions(particleSystem, collisionEvents);
 }
 
 /** Pack particles into a Float32Array: [x, y, radius, pad, r, g, b, a] per instance. */
@@ -101,7 +113,7 @@ export function packParticles(ps: Particle[]): Float32Array {
         const o = i * stride;
         data[o + 0] = p.x;
         data[o + 1] = p.y;
-        data[o + 2] = p.radius;
+        data[o + 2] = p.mass;
         data[o + 3] = 0; // pad
         data[o + 4] = p.r;
         data[o + 5] = p.g;
@@ -205,28 +217,44 @@ export function applyNeighborGravity(
     // (Any particle outside this radius we deliberately ignore, so 3×3 is sufficient.)
     const R = cellSize;
 
-    const gx = clampInt(Math.floor(thisParticle.x / cellSize), cols);
-    const gy = clampInt(Math.floor(thisParticle.y / cellSize), rows);
+    const x = thisParticle.x;
+    const y = thisParticle.y;
 
-    let ax = 0;
-    let ay = 0;
+    const gx = clampInt(Math.floor(x / cellSize), cols);
+    const gy = clampInt(Math.floor(y / cellSize), rows);
+
+    let ax = 0, ay = 0;
+
+    
 
     forEachNeighbor(grid, gx, gy, (cell) => {
         for (let i = 0; i < cell.length; i++) {
             const otherParticle = cell[i];
             if (otherParticle === thisParticle) continue;
 
-            const ddx = otherParticle.x - thisParticle.x;
-            const ddy = otherParticle.y - thisParticle.y;
+            const ddx = otherParticle.x - x;
+            const ddy = otherParticle.y - y;
             const r2 = ddx * ddx + ddy * ddy;
             if (r2 > R * R || r2 === 0) continue;
 
             // Plummer-softened gravity
-            const invR2 = 1 / (r2 + soft2);     // 1/(r²+ε²)
-            const invLen = Math.sqrt(invR2);    // 1/√(r²+ε²)
-            const mag = G * invR2 * invLen;     // G / (r²+ε²)^1.5
+            const invR2 = 1 / (r2 + soft2);                         // 1/(r²+ε²)
+            const invLen = Math.sqrt(invR2);                        // 1/√(r²+ε²)
+            const mag = G * otherParticle.mass * invR2 * invLen;    // G / (r²+ε²)^1.5
             ax += ddx * mag;
             ay += ddy * mag;
+
+            // Collision detection
+            if (r2 < touchR2) {
+                if (shouldAbsorb(thisParticle, otherParticle)) {
+                    // Is the absorber
+                    collisionEvents.push({ absorber: thisParticle.id, victim: otherParticle.id });
+                }
+                else {
+                    // Is the victim
+                    return;
+                }
+            }
         }
     });
 
@@ -242,6 +270,86 @@ export function applyNeighborGravity(
     thisParticle.vx += ax * dt;
     thisParticle.vy += ay * dt;
 }
+
+// returns true if `a` should absorb `b` (i.e. a "wins" the pair)
+function shouldAbsorb(a: Particle, b: Particle): boolean {
+    // Greater mass
+    if (a.mass !== b.mass) return a.mass > b.mass;
+    // Or greater age
+    // if (a.birthTime !== b.birthTime) return a.birthTime < b.birthTime;
+    // Fallback on id
+    return a.id < b.id;
+}
+
+export interface CollisionEvent {
+    // Index of the larger particle (absorber)
+    absorber: number;
+    // Index of the smaller particle (victim)
+    victim: number;
+}
+
+export function resolveCollisions(
+    system: ParticleSystem,
+    events: CollisionEvent[],
+): void {
+    const { particles } = system;
+
+    // For each victim, pick the single strongest absorber.
+    // key = victim index, value = absorber index.
+    const winnerForVictim = new Map<number, number>();
+
+    for (const ev of events) {
+        const prevAbsorber = winnerForVictim.get(ev.victim);
+        if (prevAbsorber === undefined) {
+            winnerForVictim.set(ev.victim, ev.absorber);
+            continue;
+        }
+        // Choose the "stronger" suitor: larger mass, tiebreak by lower id.
+        const cur = particles[prevAbsorber];
+        const cand = particles[ev.absorber];
+        if (
+            cand.mass > cur.mass ||
+            (cand.mass === cur.mass && cand.id < cur.id)
+        ) {
+            winnerForVictim.set(ev.victim, ev.absorber);
+        }
+    }
+
+    // Apply. Iterate victims in a deterministic order (id-sorted) for reproducibility.
+    const victims = [...winnerForVictim.keys()].sort(
+        (i, j) => particles[i].id - particles[j].id,
+    );
+    for (const vi of victims) {
+        const victim = particles[vi];
+        if (victim.mass <= 0) continue;           // guard: already consumed
+        const winnerIdx = winnerForVictim.get(vi)!;
+        const winner = particles[winnerIdx];
+        if (winner.mass <= 0) continue;           // guard: winner died earlier this frame
+
+        winner.mass += victim.mass;
+        victim.mass = 0;
+        // Optional: momentum-conserving merge
+        const m = winner.mass + victim.mass; // use pre-sum if you want total momentum
+        winner.vx = (winner.mass * winner.vx + victim.mass * victim.vx) / m;
+        winner.vy = (winner.mass * winner.vx + victim.mass * victim.vx) / m;
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // Written by AI, so don't trust it!!!
 /** Recolor every particle by its current cell. Uses HSV→RGB so neighboring

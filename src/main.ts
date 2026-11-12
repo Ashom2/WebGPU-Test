@@ -84,7 +84,7 @@ const InitWebGPU = async () => {
                 stepMode: 'instance',
                 attributes: [
                     { shaderLocation: 0, offset: 0,  format: 'float32x2' }, // position
-                    { shaderLocation: 1, offset: 8,  format: 'float32'   }, // radius
+                    { shaderLocation: 1, offset: 8,  format: 'float32'   }, // mass
                     { shaderLocation: 2, offset: 16, format: 'float32x4' }, // color
                 ],
             }],
