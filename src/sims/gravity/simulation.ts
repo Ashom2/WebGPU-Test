@@ -16,6 +16,8 @@ import {
     cellY,
 } from '../../core/chunks';
 
+
+
 // "No target": this particle is not being absorbed by anyone
 const NONE = -1;
 const GOLDEN_ANGLE = 2.399963229728653; // spreads fragments evenly over a disc
@@ -37,10 +39,16 @@ export interface Params {
     explosionSpeed: number;
 }
 
+/** A particle that remembers when it was born. age = system.time - birthTime */
+export interface Body extends Particle {
+    birthTime: number;
+}
+
 /** Everything this simulation needs on top of the generic particles + chunk grid. */
-export interface GravitySystem extends ParticleSystem {
+export interface GravitySystem extends ParticleSystem<Body> {
     // Scratch buffer written by pass A (gravity), read by pass B (merge)
-    next: Particle[];
+    next: Body[];
+    time: number;
     // target[i] = id of the particle that wants to absorb particle i, or NONE
     target: Int32Array;
     claimed: Uint8Array;     // claimed[i] = 1 if someone targets i this frame
@@ -59,10 +67,9 @@ export function initParticles(
     spawnSpeed = 50,
     params: Params,
 ): GravitySystem {
-    const particles = createParticles(count, width, height, spawnSpeed);
-    const grid = createChunkGrid(width, height, cellSize);
-
-    // Preallocate the scratch buffers once; nothing is allocated per frame
+    const particles: Body[] = createParticles(count, width, height, spawnSpeed)
+    .map((p) => ({ ...p, birthTime: 0 }));
+    const grid = createChunkGrid<Body>(width, height, cellSize);
     const next = particles.map((p) => ({ ...p }));
     const target = new Int32Array(count).fill(NONE);
     const claimed = new Uint8Array(count);
@@ -72,6 +79,7 @@ export function initParticles(
 
     const system: GravitySystem = {
         particles, grid, next, target, claimed, deadSlots, exploders, offsets, params,
+        time: 0,
     };
 
     // Assign particles to respective cells
@@ -87,6 +95,9 @@ export function updateParticles(
     height: number,
 ): void {
     const { particles, offsets } = system;
+
+    system.time += dt;
+
     system.claimed.fill(0);
 
     // Pass A: gravity + integrate into next[], pick absorbers into target[]
@@ -160,12 +171,12 @@ function updateParticle(
  * Returns the id of the strongest neighbor that absorbs thisParticle, or NONE.
  */
 function applyNeighborGravity(
-    thisParticle: Particle,
-    out: Particle,
-    grid: ChunkGrid,
+    thisParticle: Body,
+    out: Body,
+    grid: ChunkGrid<Body>,
     params: Params,
     dt: number, // delta time
-    particles: Particle[],
+    particles: Body[],
 ): number {
     const { cellSize } = grid;
     const G = params.G;
@@ -238,11 +249,11 @@ function applyNeighborGravity(
 }
 
 // returns true if `a` should absorb `b` (i.e. a "wins" the pair)
-function shouldAbsorb(a: Particle, b: Particle): boolean {
+function shouldAbsorb(a: Body, b: Body): boolean {
     // Greater mass
     if (a.mass !== b.mass) return a.mass > b.mass;
     // Or greater age
-    // if (a.birthTime !== b.birthTime) return a.birthTime < b.birthTime;
+    if (a.birthTime !== b.birthTime) return a.birthTime < b.birthTime;
     // Fallback on id
     return a.id < b.id;
 }
@@ -344,6 +355,7 @@ function fillDeadSlot(r: number, system: GravitySystem, numExploding: number): v
     child.x = parent.x + Math.cos(angle) * spread;
     child.y = parent.y + Math.sin(angle) * spread;
     child.mass = 1;
+    child.birthTime = system.time;
     child.r = parent.r; child.g = parent.g; child.b = parent.b; child.a = parent.a;
     randomizeVelocity(child, params.explosionSpeed);
 }
@@ -352,5 +364,6 @@ function fillDeadSlot(r: number, system: GravitySystem, numExploding: number): v
 function finishExplosion(e: number, system: GravitySystem): void {
     const p = system.particles[system.exploders[e]];
     p.mass = 1;
+    p.birthTime = system.time;
     randomizeVelocity(p, system.params.explosionSpeed);
 }
