@@ -12,8 +12,8 @@ const PARAMS: FlockParams = {
     noise: 0.2,         // rad
     repelRadius: 16,    // px
     repelWeight: 1 / 3,
-    mouseRadius: 100,   // px
-    mouseWeight: 4,
+    mouseRadius: 200,   // px
+    mouseWeight: 0.8,
 };
 const TRAIL_HALF_LIFE = 0.1; // s (the original faded by 0.95 per frame at 60 fps)
 

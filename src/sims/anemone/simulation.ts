@@ -148,8 +148,12 @@ function updateParticle(
             }
             const mouseDist = Math.sqrt(mouseDist2);
             const push = params.mouseWeight * (1 - mouseDist / params.mouseRadius);
+            // Repel from mouse
             dx += (mx / mouseDist) * push;
             dy += (my / mouseDist) * push;
+            // If you want spiraling behaviour around mouse:
+            // dx += (my / mouseDist) * push;
+            // dy -= (mx / mouseDist) * push;
         }
     }
 
