@@ -29,6 +29,17 @@ export interface FlockParams {
     repelRadius: number;
     // Strength of that push relative to the neighbor's heading (1 = as strong as the heading itself)
     repelWeight: number;
+    // Particles closer than this to the mouse steer away from it (px)
+    mouseRadius: number;
+    // Strength of that push at the mouse itself, relative to a unit heading. Fades linearly to 0 at mouseRadius.
+    mouseWeight: number;
+}
+
+/** Mouse position in canvas pixels. Not `active` when the pointer is off the canvas. */
+export interface Mouse {
+    x: number;
+    y: number;
+    active: boolean;
 }
 
 /** Everything this simulation needs on top of the generic particles + chunk grid. */
@@ -71,12 +82,13 @@ export function updateParticles(
     dt: number,
     width: number,
     height: number,
+    mouse: Mouse,
 ): void {
     const { particles } = system;
 
     // Each particle reads the old state of `particles` and writes only its own slot in `next`
     for (let i = 0; i < particles.length; i++) {
-        updateParticle(i, system, dt, width, height);
+        updateParticle(i, system, dt, width, height, mouse);
     }
 
     // Swap buffers. The grid still points at the old objects until updateChunks rebuilds it.
@@ -91,6 +103,7 @@ function updateParticle(
     dt: number,
     width: number,
     height: number,
+    mouse: Mouse,
 ): void {
     const { particles, next, grid, params } = system;
     const p = particles[i];
@@ -98,11 +111,17 @@ function updateParticle(
 
     let angle = Math.atan2(p.vy, p.vx);
 
+    // Desired heading, built up from whatever is influencing this particle
+    let dx = 0, dy = 0;
+    let steering = false;
+
     const nearest = findNearest(p, grid);
     if (nearest !== null) {
+        steering = true;
+
         // Start from the nearest neighbor's heading, as a unit vector
-        let dx = nearest.vx / params.speed;
-        let dy = nearest.vy / params.speed;
+        dx = nearest.vx / params.speed;
+        dy = nearest.vy / params.speed;
 
         // Push away from it if it's too close
         const rx = p.x - nearest.x;
@@ -113,7 +132,28 @@ function updateParticle(
             dx += rx * invDist * params.repelWeight;
             dy += ry * invDist * params.repelWeight;
         }
+    }
 
+    // Push away from the mouse, stronger the closer we are
+    if (mouse.active) {
+        const mx = p.x - mouse.x;
+        const my = p.y - mouse.y;
+        const mouseDist2 = mx * mx + my * my;
+        if (mouseDist2 > 0 && mouseDist2 < params.mouseRadius * params.mouseRadius) {
+            if (!steering) {
+                // Nothing else is steering us, so start from our own heading
+                dx = p.vx / params.speed;
+                dy = p.vy / params.speed;
+                steering = true;
+            }
+            const mouseDist = Math.sqrt(mouseDist2);
+            const push = params.mouseWeight * (1 - mouseDist / params.mouseRadius);
+            dx += (mx / mouseDist) * push;
+            dy += (my / mouseDist) * push;
+        }
+    }
+
+    if (steering) {
         // Glide toward the desired heading, turning at most turnRate
         const target = Math.atan2(dy, dx) + (Math.random() * 2 - 1) * params.noise;
         const maxTurn = params.turnRate * dt;

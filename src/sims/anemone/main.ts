@@ -1,22 +1,34 @@
 import { createRenderer } from '../../core/renderer';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
-import { initParticles, updateParticles, FlockSystem, FlockParams } from './simulation';
+import { initParticles, updateParticles, FlockSystem, FlockParams, Mouse } from './simulation';
 
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 8_100;
 const CELL_SIZE = 16; // keep >= PARAMS.repelRadius so the 3×3 search always covers it
 const PARAMS: FlockParams = {
-    speed: 180,         // px/s
+    speed: 150,         // px/s
     turnRate: 6,        // rad/s
     noise: 0.2,         // rad
     repelRadius: 16,    // px
     repelWeight: 1 / 3,
+    mouseRadius: 100,   // px
+    mouseWeight: 4,
 };
 const TRAIL_HALF_LIFE = 0.1; // s (the original faded by 0.95 per frame at 60 fps)
 
 const canvas = document.getElementById('canvas-webgpu') as HTMLCanvasElement | null;
 if (!canvas) throw new Error('Canvas not found');
+
+const mouse: Mouse = { x: 0, y: 0, active: false };
+// Convert from CSS pixels to canvas pixels, in case the canvas is displayed at a different size
+canvas.addEventListener('pointermove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    mouse.active = true;
+});
+canvas.addEventListener('pointerleave', () => { mouse.active = false; });
 
 const recordStats = createStatsOverlay(document.getElementById('stats'));
 
@@ -42,7 +54,7 @@ const main = async () => {
         lastTime = now;
 
         const t0 = performance.now();
-        updateParticles(system, dt, canvas.width, canvas.height);
+        updateParticles(system, dt, canvas.width, canvas.height, mouse);
         const t1 = performance.now();
         updateChunks(system);
         const t2 = performance.now();
