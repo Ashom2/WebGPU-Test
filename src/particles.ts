@@ -1,4 +1,4 @@
-const touchR2 = 0.5;
+const touchR2 = 0.1;
 
 // "No target": this particle is not being absorbed by anyone
 const NONE = -1;
@@ -39,21 +39,16 @@ export function initParticles(
 ): ParticleSystem {
     const particles: Particle[] = [];
     for (let i = 0; i < count; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const speed = Math.random() * maxSpeed;
-        particles.push({
+        const p: Particle = {
             id: i,
             // birthTime: 0,
-            x: Math.random() * width,
-            y: Math.random() * height,
-            vx: Math.cos(angle) * speed,
-            vy: Math.sin(angle) * speed,
+            x: 0, y: 0,
+            vx: 0, vy: 0,
             mass: 1,
-            r: Math.random(),
-            g: Math.random(),
-            b: Math.random(),
-            a: 0.6 + Math.random() * 0.4,
-        });
+            r: 0, g: 0, b: 0, a: 1,
+        };
+        spawnParticle(p, width, height, maxSpeed);
+        particles.push(p);
     }
 
     // Preallocate the scratch buffers once; nothing is allocated per frame
@@ -67,6 +62,31 @@ export function initParticles(
     updateChunks(particleSystem);
 
     return particleSystem;
+}
+
+/**
+ * Give a particle a fresh random position, velocity, color, and mass 1.
+ * Used both for the initial population and for respawning dead particles.
+ * Writes only to `p` (keeps its id), so it's safe to call from a per-particle pass.
+ */
+function spawnParticle(
+    p: Particle,
+    width: number,
+    height: number,
+    maxSpeed: number,
+): void {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = Math.random() * maxSpeed;
+    // p.birthTime = 0;
+    p.x = Math.random() * width;
+    p.y = Math.random() * height;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed;
+    p.mass = 1;
+    p.r = Math.random();
+    p.g = Math.random();
+    p.b = Math.random();
+    p.a = 0.6 + Math.random() * 0.4;
 }
 
 /**
@@ -117,21 +137,34 @@ function updateParticle(
 
 /**
  * Pass B. Reads next[*] and target[*], writes ONLY particles[i].
- * Either dies (absorbed), or collects the mass and momentum of everyone who targeted it.
+ * Either dies (absorbed) and respawns, or collects the mass and momentum of everyone who targeted it.
  */
-function mergeParticle(i: number, system: ParticleSystem): void {
+function mergeParticle(
+    i: number,
+    system: ParticleSystem,
+    width: number,
+    height: number,
+    maxSpeed: number,
+): void {
     const { particles, next, target, grid } = system;
     const cur = particles[i];
     const p = next[i];
     const t = target[i];
 
-    // Already dead
-    if (p.mass === 0) return;
+    // Already dead (with respawn enabled this is just a safety net)
+    if (p.mass === 0) {
+        // Recycle the slot (comment out to let particles stay dead)
+        // spawnParticle(cur, width, height, maxSpeed);
+        return;
+    }
 
     // Victim whose winner survives this frame: absorbed.
     // (If the winner is itself a victim, we wait a frame, so mass never vanishes in a chain.)
+    // Its mass has already been collected by the winner via next[], so we kill it...
     if (t !== NONE && target[t] === NONE) {
         cur.mass = 0;
+        // Recycle the slot (comment out to let particles stay dead)
+        // spawnParticle(cur, width, height, maxSpeed);
         return;
     }
 
@@ -170,6 +203,7 @@ export function updateParticles(
     dt: number,
     width: number,
     height: number,
+    maxSpeed = 50, // for respawned particles; match what you passed to initParticles
 ): void {
     const { particles } = particleSystem;
 
@@ -178,9 +212,9 @@ export function updateParticles(
         updateParticle(i, particleSystem, params, dt, width, height);
     }
 
-    // Pass B: resolve absorption back into particles[]
+    // Pass B: resolve absorption back into particles[], respawning absorbed victims
     for (let i = 0; i < particles.length; i++) {
-        mergeParticle(i, particleSystem);
+        mergeParticle(i, particleSystem, width, height, maxSpeed);
     }
 }
 
