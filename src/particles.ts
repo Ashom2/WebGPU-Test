@@ -1,5 +1,3 @@
-const touchR2 = 0.1;
-
 // "No target": this particle is not being absorbed by anyone
 const NONE = -1;
 
@@ -135,68 +133,6 @@ function updateParticle(
     // out.vx *= 0.99; out.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
 }
 
-/**
- * Pass B. Reads next[*] and target[*], writes ONLY particles[i].
- * Either dies (absorbed) and respawns, or collects the mass and momentum of everyone who targeted it.
- */
-function mergeParticle(
-    i: number,
-    system: ParticleSystem,
-    width: number,
-    height: number,
-    maxSpeed: number,
-): void {
-    const { particles, next, target, grid } = system;
-    const cur = particles[i];
-    const p = next[i];
-    const t = target[i];
-
-    // Already dead (with respawn enabled this is just a safety net)
-    if (p.mass === 0) {
-        // Recycle the slot (comment out to let particles stay dead)
-        // spawnParticle(cur, width, height, maxSpeed);
-        return;
-    }
-
-    // Victim whose winner survives this frame: absorbed.
-    // (If the winner is itself a victim, we wait a frame, so mass never vanishes in a chain.)
-    // Its mass has already been collected by the winner via next[], so we kill it...
-    if (t !== NONE && target[t] === NONE) {
-        cur.mass = 0;
-        // Recycle the slot (comment out to let particles stay dead)
-        // spawnParticle(cur, width, height, maxSpeed);
-        return;
-    }
-
-    let m = p.mass;
-    let px = p.mass * p.vx;
-    let py = p.mass * p.vy;
-
-    // Only a "root" (not itself a victim) collects mass.
-    if (t === NONE) {
-        // Grid was built from the *old* positions, and so was target[], so look up by cur
-        const gx = clampInt(Math.floor(cur.x / grid.cellSize), grid.cols);
-        const gy = clampInt(Math.floor(cur.y / grid.cellSize), grid.rows);
-
-        forEachNeighbor(grid, gx, gy, (cell) => {
-            for (let k = 0; k < cell.length; k++) {
-                const q = cell[k].id;
-                if (target[q] !== i) continue;
-                const v = next[q];
-                // Momentum-conserving merge
-                m  += v.mass;
-                px += v.mass * v.vx;
-                py += v.mass * v.vy;
-            }
-        });
-    }
-
-    cur.x = p.x; cur.y = p.y;
-    cur.vx = px / m;
-    cur.vy = py / m;
-    cur.mass = m;
-}
-
 export function updateParticles(
     particleSystem: ParticleSystem,
     params: GravityParams,
@@ -307,6 +243,8 @@ export function forEachNeighbor(
     }
 }
 
+
+
 export interface GravityParams {
     /** Gravitational constant, px/s² per unit mass. */
     G: number;
@@ -316,7 +254,16 @@ export interface GravityParams {
     maxAccel: number;
 }
 
-// This was written by AI so don't trust it
+// NOTE keep in sync with getRadius function in vertex shader
+function getRadius(particle: Particle): number {
+    return 0.5 * Math.sqrt(particle.mass);
+}
+
+// NOTE keep in sync with getRadius
+function getRadius2(particle: Particle): number {
+    return 0.25 * particle.mass;
+}
+
 /**
  * Accumulates gravity on `thisParticle` from its neighbors and writes the new velocity to `out`
  * (never to thisParticle, so other particles can still read the old state).
@@ -360,15 +307,15 @@ export function applyNeighborGravity(
             if (r2 > R * R || r2 === 0) continue;
 
             // Plummer-softened gravity
-            const invR2 = 1 / (r2 + soft2);                          // 1/(r²+ε²)
+            const invR2 = 1 / (r2 + soft2);                         // 1/(r²+ε²)
             const invLen = Math.sqrt(invR2);                        // 1/√(r²+ε²)
             const mag = G * otherParticle.mass * invR2 * invLen;    // G / (r²+ε²)^1.5
             ax += ddx * mag;
             ay += ddy * mag;
 
-            // Collision detection: am I touching someone who outranks me?
-            // Keep only the strongest such neighbor. We never write to *them*.
-            if (r2 < touchR2 && shouldAbsorb(otherParticle, thisParticle)) {
+            // Collision detection: am I engulfed by someone who outranks me?
+            // My center must be inside the winner's circle. Keep only the strongest such neighbor.
+            if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
                 if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
                     absorber = otherParticle.id;
                 }
@@ -399,6 +346,68 @@ function shouldAbsorb(a: Particle, b: Particle): boolean {
     // if (a.birthTime !== b.birthTime) return a.birthTime < b.birthTime;
     // Fallback on id
     return a.id < b.id;
+}
+
+/**
+ * Pass B. Reads next[*] and target[*], writes ONLY particles[i].
+ * Either dies (absorbed) and respawns, or collects the mass and momentum of everyone who targeted it.
+ */
+function mergeParticle(
+    i: number,
+    system: ParticleSystem,
+    width: number,
+    height: number,
+    maxSpeed: number,
+): void {
+    const { particles, next, target, grid } = system;
+    const cur = particles[i];
+    const p = next[i];
+    const t = target[i];
+
+    // Already dead (with respawn enabled this is just a safety net)
+    if (p.mass === 0) {
+        // Recycle the slot (comment out to let particles stay dead)
+        // spawnParticle(cur, width, height, maxSpeed);
+        return;
+    }
+
+    // Victim whose winner survives this frame: absorbed.
+    // (If the winner is itself a victim, we wait a frame, so mass never vanishes in a chain.)
+    // Its mass has already been collected by the winner via next[], so we kill it...
+    if (t !== NONE && target[t] === NONE) {
+        cur.mass = 0;
+        // Recycle the slot (comment out to let particles stay dead)
+        // spawnParticle(cur, width, height, maxSpeed);
+        return;
+    }
+
+    let m = p.mass;
+    let px = p.mass * p.vx;
+    let py = p.mass * p.vy;
+
+    // Only a "root" (not itself a victim) collects mass.
+    if (t === NONE) {
+        // Grid was built from the *old* positions, and so was target[], so look up by cur
+        const gx = clampInt(Math.floor(cur.x / grid.cellSize), grid.cols);
+        const gy = clampInt(Math.floor(cur.y / grid.cellSize), grid.rows);
+
+        forEachNeighbor(grid, gx, gy, (cell) => {
+            for (let k = 0; k < cell.length; k++) {
+                const q = cell[k].id;
+                if (target[q] !== i) continue;
+                const v = next[q];
+                // Momentum-conserving merge
+                m  += v.mass;
+                px += v.mass * v.vx;
+                py += v.mass * v.vy;
+            }
+        });
+    }
+
+    cur.x = p.x; cur.y = p.y;
+    cur.vx = px / m;
+    cur.vy = py / m;
+    cur.mass = m;
 }
 
 

@@ -45,6 +45,8 @@ These are just notes to self. Ignore.
 
 -seperate handling of largest particle clumps
 
+-display for simulation step, render step timings
+
 -Optimisations
     -expand out neighbor search loop manually (this means we get to check for collisions only in our cell)
 
