@@ -12,10 +12,12 @@ import fragmentShaderCode from './shaders/particle.frag.wgsl?raw';
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 10_000;
 const CELL_SIZE = 32;
-const GRAVITY = {
+const PARAMS = {
     G: 200,         // tune: 50-1000
-    softening: 4,   // px; keeps close pairs from exploding
-    maxAccel: 40000,  // px/s²
+    softening: 0,   // px; keeps close pairs from exploding
+    maxAcceleration: 100,  // px/s²
+    maxMass: 50,
+    explosionSpeed: 100,
 };
 
 // Reference state holder
@@ -192,7 +194,7 @@ const frame = (now: number) => {
     lastTime = now;
 
     const t0 = performance.now();
-    updateParticles(particleSys!, GRAVITY, dt, canvas.width, canvas.height);
+    updateParticles(particleSys!, dt, canvas.width, canvas.height);
     const t1 = performance.now();
     updateChunks(particleSys!);
     const t2 = performance.now();
@@ -210,7 +212,7 @@ const frame = (now: number) => {
 const main = async () => {
     await InitWebGPU();
     const canvas = canvasRef!;
-    particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE);
+    particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, 50, PARAMS);
     lastTime = 0;
     requestAnimationFrame(frame);
 };
@@ -219,7 +221,7 @@ main().catch(console.error);
 
 document.querySelector('#id-btn')?.addEventListener('click', () => {
     const canvas = canvasRef!;
-    particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE);
+    particleSys = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, 50, PARAMS);
     // Reset clock
     lastTime = 0;
 });

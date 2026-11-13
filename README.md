@@ -7,9 +7,13 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
+-implement particle age then give them a grace period to prevent immediate reabsorbtion
+
 -Calculate velocity then update position? or update position as we go (bad for parralel)?
 
 -Sliders for parameters
+
+-One of the problems with the explosions is that it doesn't account for the total mass achieved by multiple particles very close together, maybe explosions should happen to every particle that experiences enough acceleration?
 
 -Edge conditions
     -gravity?

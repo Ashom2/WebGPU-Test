@@ -1,8 +1,5 @@
 // "No target": this particle is not being absorbed by anyone
 const NONE = -1;
-// A particle that reaches this mass explodes into that many mass-1 particles
-const MAX_MASS = 200;
-const EXPLOSION_SPEED = 300; // max px/s of fragments
 const GOLDEN_ANGLE = 2.399963229728653; // spreads fragments evenly over a disc
 
 export interface Particle {
@@ -22,6 +19,19 @@ export interface ChunkGrid {
     cells: Particle[][];
 }
 
+export interface Params {
+    // Gravitational constant, px/s² per unit mass
+    G: number;
+    // Softening length in px; avoids 1/r² blowup
+    softening: number;
+    // Max acceleration magnitude per particle (px/s²)
+    maxAcceleration: number;
+    // A particle that reaches this mass explodes into that many mass-1 particles
+    maxMass: number;
+    // max px/s of fragments
+    explosionSpeed: number; 
+}
+
 export interface ParticleSystem {
     // Current state. Invariant: particles[i].id === i
     particles: Particle[];
@@ -36,6 +46,8 @@ export interface ParticleSystem {
     offsets: Int32Array;     // offsets[e] = first dead-slot rank owned by exploder e (length count+1)
     // Chunk grid
     grid: ChunkGrid;
+    // Parmeters
+    params: Params;
 }
 
 /** Random direction, random speed in [0, maxSpeed). */
@@ -55,12 +67,12 @@ function spawnParticle(
     p: Particle,
     width: number,
     height: number,
-    maxSpeed: number,
+    spawnSpeed: number,
 ): void {
     // p.birthTime = 0;
     p.x = Math.random() * width;
     p.y = Math.random() * height;
-    randomizeVelocity(p, maxSpeed);
+    randomizeVelocity(p, spawnSpeed);
     p.mass = 1;
     p.r = Math.random();
     p.g = Math.random();
@@ -73,7 +85,8 @@ export function initParticles(
     width: number, 
     height: number,
     cellSize = 64,
-    maxSpeed = 50,
+    spawnSpeed = 50,
+    params: Params,
 ): ParticleSystem {
     const particles: Particle[] = [];
     for (let i = 0; i < count; i++) {
@@ -85,7 +98,7 @@ export function initParticles(
             mass: 1,
             r: 0, g: 0, b: 0, a: 1,
         };
-        spawnParticle(p, width, height, maxSpeed);
+        spawnParticle(p, width, height, spawnSpeed);
         particles.push(p);
     }
 
@@ -98,7 +111,8 @@ export function initParticles(
     const deadSlots = new Int32Array(count);
     const exploders = new Int32Array(count);
     const offsets = new Int32Array(count + 1);
-    const particleSystem = { particles, next, target, claimed, deadSlots, exploders, offsets, grid };
+    // Construct particle system
+    const particleSystem = { particles, next, target, claimed, deadSlots, exploders, offsets, grid, params };
 
     // Assign particles to respective cells
     updateChunks(particleSystem);
@@ -115,12 +129,11 @@ export function initParticles(
 function updateParticle(
     i: number,
     system: ParticleSystem,
-    params: GravityParams,
     dt: number,
     width: number,
     height: number,
 ): void {
-    const { particles, next, target, claimed, grid } = system;
+    const { particles, next, target, claimed, grid, params } = system;
     const p = particles[i];
     const out = next[i];
 
@@ -159,7 +172,6 @@ function updateParticle(
 
 export function updateParticles(
     particleSystem: ParticleSystem,
-    params: GravityParams,
     dt: number,
     width: number,
     height: number,
@@ -169,7 +181,7 @@ export function updateParticles(
 
     // Pass A: gravity + integrate into next[], pick absorbers into target[]
     for (let i = 0; i < particles.length; i++) {
-        updateParticle(i, particleSystem, params, dt, width, height);
+        updateParticle(i, particleSystem, dt, width, height);
     }
 
     // Pass B: resolve absorption back into particles[], respawning absorbed victims
@@ -280,15 +292,6 @@ export function forEachNeighbor(
 
 
 
-export interface GravityParams {
-    /** Gravitational constant, px/s² per unit mass. */
-    G: number;
-    /** Softening length in px; avoids 1/r² blowup. */
-    softening: number;
-    /** Max acceleration magnitude per particle (px/s²). */
-    maxAccel: number;
-}
-
 // NOTE keep in sync with getRadius function in vertex shader
 function getRadius(particle: Particle): number {
     return 0.5 * Math.sqrt(particle.mass);
@@ -308,14 +311,14 @@ export function applyNeighborGravity(
     thisParticle: Particle,
     out: Particle,
     grid: ChunkGrid,
-    params: GravityParams,
+    params: Params,
     dt: number, // delta time
     particles: Particle[],
 ): number {
     const { cellSize, cols, rows } = grid;
     const G = params.G;
     const soft2 = params.softening * params.softening;
-    const maxAcc2 = params.maxAccel * params.maxAccel;
+    const maxAcc2 = params.maxAcceleration * params.maxAcceleration;
 
     // Interact radius: anything within this distance is definitely in the 3×3 cells.
     // (Any particle outside this radius we deliberately ignore, so 3×3 is sufficient.)
@@ -350,8 +353,8 @@ export function applyNeighborGravity(
 
             // Collision detection: am I engulfed by someone who outranks me?
             // My center must be inside the winner's circle. Keep only the strongest such neighbor.
-            // if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
-            if (shouldAbsorb(otherParticle, thisParticle) && r2 < 0.1) {
+            if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
+            // if (shouldAbsorb(otherParticle, thisParticle) && r2 < 0.05) {
                 if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
                     absorber = otherParticle.id;
                 }
@@ -362,7 +365,7 @@ export function applyNeighborGravity(
     // Clamp acceleration magnitude
     const a2 = ax * ax + ay * ay;
     if (a2 > maxAcc2) {
-        const s = params.maxAccel / Math.sqrt(a2);
+        const s = params.maxAcceleration / Math.sqrt(a2);
         ax *= s;
         ay *= s;
     }
@@ -443,13 +446,13 @@ function mergeParticle(
  * Returns the number of exploders that will actually explode this frame.
  */
 function collectSlots(system: ParticleSystem): number {
-    const { particles, deadSlots, exploders, offsets } = system;
+    const { particles, deadSlots, exploders, offsets, params } = system;
 
     let numDead = 0, numExploding = 0;
     for (let i = 0; i < particles.length; i++) {
         const m = particles[i].mass;
         if (m === 0) deadSlots[numDead++] = i;
-        else if (m >= MAX_MASS) exploders[numExploding++] = i;
+        else if (m >= params.maxMass) exploders[numExploding++] = i;
     }
 
     // Each exploder reuses its own slot, so it needs (mass - 1) dead slots
@@ -466,7 +469,7 @@ function collectSlots(system: ParticleSystem): number {
 
 /** Dead slot `r` finds the exploder that owns it and becomes one of its fragments. Writes only its own slot. */
 function fillDeadSlot(r: number, system: ParticleSystem, numExploding: number): void {
-    const { particles, deadSlots, exploders, offsets } = system;
+    const { particles, deadSlots, exploders, offsets, params } = system;
 
     // Binary search: the last exploder whose offset is <= r
     let lo = 0, hi = numExploding - 1;
@@ -487,12 +490,12 @@ function fillDeadSlot(r: number, system: ParticleSystem, numExploding: number): 
     child.y = parent.y + Math.sin(angle) * spread;
     child.mass = 1;
     child.r = parent.r; child.g = parent.g; child.b = parent.b; child.a = parent.a;
-    randomizeVelocity(child, EXPLOSION_SPEED);
+    randomizeVelocity(child, params.explosionSpeed);
 }
 
 /** The exploder's own slot becomes the last fragment. Writes only its own slot. */
 function finishExplosion(e: number, system: ParticleSystem): void {
     const p = system.particles[system.exploders[e]];
     p.mass = 1;
-    randomizeVelocity(p, EXPLOSION_SPEED);
+    randomizeVelocity(p, system.params.explosionSpeed);
 }
