@@ -156,33 +156,53 @@ const DrawParticles = () => {
     device.queue.submit([commandEncoder.finish()]);
 }
 
-const perf = {
-    updateMs: 0,
-    chunkMs: 0,
-    packMs: 0,
-    drawMs: 0,
-    frames: 0,
-    lastReport: performance.now(),
+const statsEl = document.getElementById('stats');
+const STATS_INTERVAL = 250; // ms between display refreshes; keeps the text readable and DOM writes cheap
+const stats = { update: 0, chunks: 0, draw: 0, frames: 0, lastShown: 0 };
+
+/** Accumulate per-frame timings and refresh the overlay with averages a few times a second. */
+const recordStats = (now: number, update: number, chunks: number, draw: number) => {
+    stats.update += update;
+    stats.chunks += chunks;
+    stats.draw   += draw;
+    stats.frames++;
+
+    const elapsed = now - stats.lastShown;
+    if (elapsed < STATS_INTERVAL) return;
+
+    const n = stats.frames;
+    const fps = (n * 1000) / elapsed;
+    if (statsEl) {
+        statsEl.textContent =
+            `update  ${(stats.update / n).toFixed(2)} ms\n` +
+            `chunks  ${(stats.chunks / n).toFixed(2)} ms\n` +
+            `render  ${(stats.draw / n).toFixed(2)} ms\n` +
+            `FPS     ${fps.toFixed(0)}`;
+    }
+
+    stats.update = stats.chunks = stats.draw = 0;
+    stats.frames = 0;
+    stats.lastShown = now;
 };
 
-
-/** Use browser dev tools to assess performance (in marker chart). */
+/** Use browser dev tools to assess performance (in marker chart), or read the on-screen overlay. */
 const frame = (now: number) => {
     const canvas = canvasRef!;
     const dt = lastTime === 0 ? 0 : Math.min((now - lastTime) / 1000, 0.1);
     lastTime = now;
 
-    performance.mark('frame-start');
+    const t0 = performance.now();
     updateParticles(particleSys!, GRAVITY, dt, canvas.width, canvas.height);
-    performance.mark('update-end');
+    const t1 = performance.now();
     updateChunks(particleSys!);
-    performance.mark('chunk-end');
+    const t2 = performance.now();
     DrawParticles();
-    performance.mark('frame-end');
+    const t3 = performance.now();
 
-    performance.measure('update', 'frame-start', 'update-end');
-    performance.measure('chunk',  'update-end',  'chunk-end');
-    performance.measure('draw',   'chunk-end',   'frame-end');
+    performance.measure('update', { start: t0, end: t1 });
+    performance.measure('chunk',  { start: t1, end: t2 });
+    performance.measure('draw',   { start: t2, end: t3 });
+    recordStats(now, t1 - t0, t2 - t1, t3 - t2);
 
     requestAnimationFrame(frame);
 };
