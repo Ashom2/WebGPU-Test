@@ -7,6 +7,8 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
+-for stars, there are lot more spiralling orbits. Why isn't that happening here? No angular mmomentum? Yes it would seem so
+
 -implement particle age then give them a grace period to prevent immediate reabsorbtion
 
 -Calculate velocity then update position? or update position as we go (bad for parralel)?

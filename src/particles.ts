@@ -20,12 +20,16 @@ export interface ChunkGrid {
 }
 
 export interface Params {
+    // Velocity damping factor per frame
+    drag: number;
     // Gravitational constant, px/s² per unit mass
     G: number;
     // Softening length in px; avoids 1/r² blowup
     softening: number;
     // Max acceleration magnitude per particle (px/s²)
     maxAcceleration: number;
+    // Collision mode, 0: off, 1: constant distance, 2: touching
+    collisionMode: number;
     // A particle that reaches this mass explodes into that many mass-1 particles
     maxMass: number;
     // max px/s of fragments
@@ -167,7 +171,7 @@ function updateParticle(
     else if (out.y > height + radius)  out.y = -radius;
 
     // Apply weak drag
-    // out.vx *= 0.99; out.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
+    out.vx *= params.drag; out.vy *= params.drag;
 }
 
 export function updateParticles(
@@ -351,12 +355,20 @@ export function applyNeighborGravity(
             ax += ddx * mag;
             ay += ddy * mag;
 
-            // Collision detection: am I engulfed by someone who outranks me?
-            // My center must be inside the winner's circle. Keep only the strongest such neighbor.
-            if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
-            // if (shouldAbsorb(otherParticle, thisParticle) && r2 < 0.05) {
-                if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
-                    absorber = otherParticle.id;
+            if (params.collisionMode == 1) {
+                // Collision detection: am I engulfed by someone who outranks me?
+                if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
+                    if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
+                        absorber = otherParticle.id;
+                    }
+                }
+            }
+            else if (params.collisionMode == 2) {            
+                // Collision detection: am I within a distance of a particle who outranks me?
+                if (shouldAbsorb(otherParticle, thisParticle) && r2 < 0.05) {
+                    if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
+                        absorber = otherParticle.id;
+                    }
                 }
             }
         }

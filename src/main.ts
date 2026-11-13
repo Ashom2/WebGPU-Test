@@ -13,11 +13,13 @@ const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 10_000;
 const CELL_SIZE = 32;
 const PARAMS = {
-    G: 200,         // tune: 50-1000
-    softening: 0,   // px; keeps close pairs from exploding
-    maxAcceleration: 100,  // px/s²
+    G: 200,
+    softening: 4,
+    maxAcceleration: 100,
+    collisionMode: 1,
     maxMass: 50,
-    explosionSpeed: 100,
+    explosionSpeed: 200,
+    drag: 1.0,
 };
 
 // Reference state holder
@@ -142,7 +144,7 @@ const DrawParticles = () => {
     const renderPass = commandEncoder.beginRenderPass({
         colorAttachments: [{
             view: textureView,
-            clearValue: { r: 0.1, g: 0.1, b: 0.15, a: 1.0 },
+            clearValue: { r: 0.05, g: 0.05, b: 0.1, a: 1.0 },
             loadOp: 'clear',
             storeOp: 'store',
         }],
