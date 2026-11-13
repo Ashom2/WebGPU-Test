@@ -62,3 +62,5 @@ what makes a particle gravity simulation different from the universe simulations
 flying text that rearranges itself
 
 snowflake / coral formation
+
+fluid simulation around boxes, where each box leaks a color

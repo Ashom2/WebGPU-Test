@@ -15,7 +15,7 @@ const CELL_SIZE = 32;
 const GRAVITY = {
     G: 200,         // tune: 50-1000
     softening: 4,   // px; keeps close pairs from exploding
-    maxAccel: 400,  // px/s²
+    maxAccel: 40000,  // px/s²
 };
 
 // Reference state holder

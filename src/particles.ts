@@ -1,5 +1,9 @@
 // "No target": this particle is not being absorbed by anyone
 const NONE = -1;
+// A particle that reaches this mass explodes into that many mass-1 particles
+const MAX_MASS = 200;
+const EXPLOSION_SPEED = 300; // max px/s of fragments
+const GOLDEN_ANGLE = 2.399963229728653; // spreads fragments evenly over a disc
 
 export interface Particle {
     id: number;
@@ -26,7 +30,42 @@ export interface ParticleSystem {
     // target[i] = id of the particle that wants to absorb particle i, or NONE
     target: Int32Array;
     claimed: Uint8Array; // claimed[i] = 1 if someone targets i this frame
+    // Explosion scratch, rebuilt every frame
+    deadSlots: Int32Array;   // indices of mass-0 particles
+    exploders: Int32Array;   // indices of particles with mass >= MAX_MASS
+    offsets: Int32Array;     // offsets[e] = first dead-slot rank owned by exploder e (length count+1)
+    // Chunk grid
     grid: ChunkGrid;
+}
+
+/** Random direction, random speed in [0, maxSpeed). */
+function randomizeVelocity(p: Particle, maxSpeed: number): void {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = (0.5 + 0.5 * Math.random()) * maxSpeed;
+    p.vx = Math.cos(angle) * speed;
+    p.vy = Math.sin(angle) * speed;
+}
+
+/**
+ * Give a particle a fresh random position, velocity, color, and mass 1.
+ * Used both for the initial population and for respawning dead particles.
+ * Writes only to `p` (keeps its id), so it's safe to call from a per-particle pass.
+ */
+function spawnParticle(
+    p: Particle,
+    width: number,
+    height: number,
+    maxSpeed: number,
+): void {
+    // p.birthTime = 0;
+    p.x = Math.random() * width;
+    p.y = Math.random() * height;
+    randomizeVelocity(p, maxSpeed);
+    p.mass = 1;
+    p.r = Math.random();
+    p.g = Math.random();
+    p.b = Math.random();
+    p.a = 1.0;
 }
 
 export function initParticles(
@@ -56,7 +95,10 @@ export function initParticles(
     // Create chunk grid
     const grid = createChunkGrid(width, height, cellSize);
     const claimed = new Uint8Array(count);
-    const particleSystem = { particles, next, target, claimed, grid };
+    const deadSlots = new Int32Array(count);
+    const exploders = new Int32Array(count);
+    const offsets = new Int32Array(count + 1);
+    const particleSystem = { particles, next, target, claimed, deadSlots, exploders, offsets, grid };
 
     // Assign particles to respective cells
     updateChunks(particleSystem);
@@ -64,30 +106,7 @@ export function initParticles(
     return particleSystem;
 }
 
-/**
- * Give a particle a fresh random position, velocity, color, and mass 1.
- * Used both for the initial population and for respawning dead particles.
- * Writes only to `p` (keeps its id), so it's safe to call from a per-particle pass.
- */
-function spawnParticle(
-    p: Particle,
-    width: number,
-    height: number,
-    maxSpeed: number,
-): void {
-    const angle = Math.random() * Math.PI * 2;
-    const speed = Math.random() * maxSpeed;
-    // p.birthTime = 0;
-    p.x = Math.random() * width;
-    p.y = Math.random() * height;
-    p.vx = Math.cos(angle) * speed;
-    p.vy = Math.sin(angle) * speed;
-    p.mass = 1;
-    p.r = Math.random();
-    p.g = Math.random();
-    p.b = Math.random();
-    p.a = 0.6 + Math.random() * 0.4;
-}
+
 
 /**
  * Pass A. Reads particles[i] (and its neighbors), writes ONLY next[i] and target[i].
@@ -144,9 +163,8 @@ export function updateParticles(
     dt: number,
     width: number,
     height: number,
-    maxSpeed = 50, // for respawned particles; match what you passed to initParticles
 ): void {
-    const { particles } = particleSystem;
+    const { particles, offsets } = particleSystem;
     particleSystem.claimed.fill(0);
 
     // Pass A: gravity + integrate into next[], pick absorbers into target[]
@@ -156,7 +174,18 @@ export function updateParticles(
 
     // Pass B: resolve absorption back into particles[], respawning absorbed victims
     for (let i = 0; i < particles.length; i++) {
-        mergeParticle(i, particleSystem, width, height, maxSpeed);
+        mergeParticle(i, particleSystem, width, height);
+    }
+
+    // Pass C: explosions. Slots freed by pass B are reusable immediately.
+    const numExploding = collectSlots(particleSystem);
+    const numChildren = offsets[numExploding];
+    for (let r = 0; r < numChildren; r++) {      // parallel over dead-slot ranks
+        fillDeadSlot(r, particleSystem, numExploding);
+    }
+    // (on the GPU: barrier here, because fill reads parent mass and reset overwrites it)
+    for (let e = 0; e < numExploding; e++) {     // parallel over exploders
+        finishExplosion(e, particleSystem);
     }
 }
 
@@ -180,7 +209,7 @@ export function packParticles(ps: Particle[]): Float32Array {
 }
 
 /** Allocate an empty grid. */
-export function createChunkGrid(
+function createChunkGrid(
     width: number,
     height: number,
     cellSize = 64,
@@ -321,7 +350,8 @@ export function applyNeighborGravity(
 
             // Collision detection: am I engulfed by someone who outranks me?
             // My center must be inside the winner's circle. Keep only the strongest such neighbor.
-            if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
+            // if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
+            if (shouldAbsorb(otherParticle, thisParticle) && r2 < 0.1) {
                 if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
                     absorber = otherParticle.id;
                 }
@@ -363,27 +393,18 @@ function mergeParticle(
     particleSystem: ParticleSystem,
     width: number,
     height: number,
-    maxSpeed: number,
 ): void {
     const { particles, next, target, claimed, grid } = particleSystem;
     const cur = particles[i];
     const p = next[i];
     const t = target[i];
 
-    // Already dead (with respawn enabled this is just a safety net)
-    if (p.mass === 0) {
-        // Recycle the slot (comment out to let particles stay dead)
-        // spawnParticle(cur, width, height, maxSpeed);
-        return;
-    }
+    // Already dead
+    if (p.mass === 0) return;
 
-    // Victim whose winner survives this frame: absorbed.
-    // (If the winner is itself a victim, we wait a frame, so mass never vanishes in a chain.)
-    // Its mass has already been collected by the winner via next[], so we kill it...
+    // Victim whose winner survives this frame: absorbed (mass already collected via next[])
     if (t !== NONE && target[t] === NONE) {
         cur.mass = 0;
-        // Recycle the slot (comment out to let particles stay dead)
-        // spawnParticle(cur, width, height, maxSpeed);
         return;
     }
 
@@ -414,4 +435,64 @@ function mergeParticle(
     cur.vx = px / m;
     cur.vy = py / m;
     cur.mass = m;
+}
+
+/**
+ * Stream compaction + exclusive scan (a prefix sum on the GPU).
+ * Lists dead slots and exploders, and gives each exploder a contiguous range of dead-slot ranks.
+ * Returns the number of exploders that will actually explode this frame.
+ */
+function collectSlots(system: ParticleSystem): number {
+    const { particles, deadSlots, exploders, offsets } = system;
+
+    let numDead = 0, numExploding = 0;
+    for (let i = 0; i < particles.length; i++) {
+        const m = particles[i].mass;
+        if (m === 0) deadSlots[numDead++] = i;
+        else if (m >= MAX_MASS) exploders[numExploding++] = i;
+    }
+
+    // Each exploder reuses its own slot, so it needs (mass - 1) dead slots
+    let total = 0, e = 0;
+    for (; e < numExploding; e++) {
+        const need = particles[exploders[e]].mass - 1;
+        if (total + need > numDead) break;   // can't happen while total mass == count; otherwise wait a frame
+        offsets[e] = total;
+        total += need;
+    }
+    offsets[e] = total;
+    return e;
+}
+
+/** Dead slot `r` finds the exploder that owns it and becomes one of its fragments. Writes only its own slot. */
+function fillDeadSlot(r: number, system: ParticleSystem, numExploding: number): void {
+    const { particles, deadSlots, exploders, offsets } = system;
+
+    // Binary search: the last exploder whose offset is <= r
+    let lo = 0, hi = numExploding - 1;
+    while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (offsets[mid] <= r) lo = mid; else hi = mid - 1;
+    }
+
+    const parent = particles[exploders[lo]];
+    const child = particles[deadSlots[r]];
+
+    // j = 0 is the exploder itself (stays at the center); fragments are 1..mass-1
+    const j = r - offsets[lo] + 1;
+    const spread = getRadius(parent) * Math.sqrt((j + 0.5) / parent.mass);
+    const angle = j * GOLDEN_ANGLE;
+
+    child.x = parent.x + Math.cos(angle) * spread;
+    child.y = parent.y + Math.sin(angle) * spread;
+    child.mass = 1;
+    child.r = parent.r; child.g = parent.g; child.b = parent.b; child.a = parent.a;
+    randomizeVelocity(child, EXPLOSION_SPEED);
+}
+
+/** The exploder's own slot becomes the last fragment. Writes only its own slot. */
+function finishExplosion(e: number, system: ParticleSystem): void {
+    const p = system.particles[system.exploders[e]];
+    p.mass = 1;
+    randomizeVelocity(p, EXPLOSION_SPEED);
 }
