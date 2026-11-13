@@ -111,7 +111,7 @@ function updateParticle(
     out.mass = p.mass;
 
     // If it's destroyed, skip
-    if (p.mass == 0) {
+    if (p.mass === 0) {
         target[i] = NONE;
         return;
     }
@@ -127,12 +127,12 @@ function updateParticle(
     out.y += out.vy * dt;
 
     // Wrap around (use radius as margin so large circles fully exit first)
-    const m = p.mass;
-    if (out.x < -m)               out.x = width + m;
-    else if (out.x > width + m)   out.x = -m;
+    const radius = getRadius(p);
+    if (out.x < -radius)               out.x = width + radius;
+    else if (out.x > width + radius)   out.x = -radius;
 
-    if (out.y < -m)               out.y = height + m;
-    else if (out.y > height + m)  out.y = -m;
+    if (out.y < -radius)               out.y = height + radius;
+    else if (out.y > height + radius)  out.y = -radius;
 
     // Apply weak drag
     // out.vx *= 0.99; out.vy *= 0.99; // per frame (≈ 45%/s loss at 60fps)
@@ -160,7 +160,7 @@ export function updateParticles(
     }
 }
 
-/** Pack particles into a Float32Array: [x, y, radius, pad, r, g, b, a] per instance. */
+/** Pack particles into a Float32Array: [x, y, mass, pad, r, g, b, a] per instance. */
 export function packParticles(ps: Particle[]): Float32Array {
     const stride = 8;
     const data = new Float32Array(ps.length * stride);
@@ -414,56 +414,4 @@ function mergeParticle(
     cur.vx = px / m;
     cur.vy = py / m;
     cur.mass = m;
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// Written by AI, so don't trust it!!!
-/** Recolor every particle by its current cell. Uses HSV→RGB so neighboring
- *  cells are visually distinct. Call after updateChunks(). */
-export function debugColorByChunk(system: ParticleSystem): void {
-    const { grid, particles } = system;
-    const { cols, rows, cellSize, cells } = grid;
-
-    // For each cell, assign a hue once; then copy to its particles.
-    for (let gy = 0; gy < rows; gy++) {
-        for (let gx = 0; gx < cols; gx++) {
-            const idx = gy * cols + gx;
-            // Golden-ratio hue stepping gives maximally distinct adjacent colors.
-            const hue = (idx * 0.61803398875) % 1.0;
-            const [r, g, b] = hsvToRgb(hue, 0.75, 1.0);
-            for (const p of cells[idx]) {
-                p.r = r; p.g = g; p.b = b; p.a = 1.0;
-            }
-        }
-    }
-}
-
-function hsvToRgb(h: number, s: number, v: number): [number, number, number] {
-    const i = Math.floor(h * 6);
-    const f = h * 6 - i;
-    const p = v * (1 - s);
-    const q = v * (1 - f * s);
-    const t = v * (1 - (1 - f) * s);
-    switch (i % 6) {
-        case 0: return [v, t, p];
-        case 1: return [q, v, p];
-        case 2: return [p, v, t];
-        case 3: return [p, q, v];
-        case 4: return [t, p, v];
-        default: return [v, p, q];
-    }
 }
