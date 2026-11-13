@@ -11,9 +11,10 @@ const PARAMS = {
     softening: 4,
     maxAcceleration: 100,
     collisionMode: 1,
-    maxMass: 50,
-    explosionSpeed: 200,
+    maxMass: 100,
+    explosionSpeed: 100,
     drag: 1.0,
+    spawnImmunity: 0.25,
 };
 
 const canvas = document.getElementById('canvas-webgpu') as HTMLCanvasElement | null;

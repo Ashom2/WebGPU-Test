@@ -37,6 +37,8 @@ export interface Params {
     maxMass: number;
     // max px/s of fragments
     explosionSpeed: number;
+    // Newly born particles can't be absorbed for this many seconds, so explosion fragments can spread out
+    spawnImmunity: number;
 }
 
 /** A particle that remembers when it was born. age = system.time - birthTime */
@@ -149,7 +151,8 @@ function updateParticle(
     }
 
     // Update velocity from gravity (written to out), and find who wants to absorb us
-    target[i] = applyNeighborGravity(p, out, grid, params, dt, particles);
+    const canBeAbsorbed = system.time - p.birthTime >= params.spawnImmunity;
+    target[i] = applyNeighborGravity(p, out, grid, params, dt, particles, canBeAbsorbed);
 
     // Mark claimed targets
     if (target[i] !== NONE) claimed[target[i]] = 1;
@@ -177,6 +180,7 @@ function applyNeighborGravity(
     params: Params,
     dt: number, // delta time
     particles: Body[],
+    canBeAbsorbed: boolean,
 ): number {
     const { cellSize } = grid;
     const G = params.G;
@@ -195,6 +199,7 @@ function applyNeighborGravity(
 
     let ax = 0, ay = 0;
     let absorber = NONE;
+    const collisionMode = canBeAbsorbed ? params.collisionMode : 0;
 
     forEachNeighbor(grid, gx, gy, (cell) => {
         for (let i = 0; i < cell.length; i++) {
@@ -214,7 +219,7 @@ function applyNeighborGravity(
             ax += ddx * mag;
             ay += ddy * mag;
 
-            if (params.collisionMode == 1) {
+            if (collisionMode == 1) {
                 // Collision detection: am I engulfed by someone who outranks me?
                 if (shouldAbsorb(otherParticle, thisParticle) && r2 < getRadius2(otherParticle)) {
                     if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {
@@ -222,7 +227,7 @@ function applyNeighborGravity(
                     }
                 }
             }
-            else if (params.collisionMode == 2) {
+            else if (collisionMode == 2) {
                 // Collision detection: am I within a distance of a particle who outranks me?
                 if (shouldAbsorb(otherParticle, thisParticle) && r2 < 0.05) {
                     if (absorber === NONE || shouldAbsorb(otherParticle, particles[absorber])) {

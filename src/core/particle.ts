@@ -1,6 +1,5 @@
 export interface Particle {
     id: number;
-    // birthTime: number;
     x: number; y: number;
     vx: number; vy: number;
     mass: number;
@@ -38,7 +37,6 @@ export function spawnParticle(
     height: number,
     spawnSpeed: number,
 ): void {
-    // p.birthTime = 0;
     p.x = Math.random() * width;
     p.y = Math.random() * height;
     randomizeVelocity(p, spawnSpeed);
@@ -60,7 +58,6 @@ export function createParticles(
     for (let i = 0; i < count; i++) {
         const p: Particle = {
             id: i,
-            // birthTime: 0,
             x: 0, y: 0,
             vx: 0, vy: 0,
             mass: 1,

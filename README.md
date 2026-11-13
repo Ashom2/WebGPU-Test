@@ -7,6 +7,9 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
+-move mass into Body and out of Particle. This is because I don't think anemone and gravity sims should have to use the same way of effectively just passing particle size.
+    -while im at it, i can make seperate shader functions for them
+
 -for stars, there are lot more spiralling orbits. Why isn't that happening here? No angular mmomentum? Yes it would seem so
 
 -implement particle age then give them a grace period to prevent immediate reabsorbtion
