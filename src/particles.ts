@@ -25,6 +25,7 @@ export interface ParticleSystem {
     next: Particle[];
     // target[i] = id of the particle that wants to absorb particle i, or NONE
     target: Int32Array;
+    claimed: Uint8Array; // claimed[i] = 1 if someone targets i this frame
     grid: ChunkGrid;
 }
 
@@ -52,10 +53,11 @@ export function initParticles(
     // Preallocate the scratch buffers once; nothing is allocated per frame
     const next = particles.map((p) => ({ ...p }));
     const target = new Int32Array(count).fill(NONE);
-
     // Create chunk grid
     const grid = createChunkGrid(width, height, cellSize);
-    const particleSystem = { particles, next, target, grid };
+    const claimed = new Uint8Array(count);
+    const particleSystem = { particles, next, target, claimed, grid };
+
     // Assign particles to respective cells
     updateChunks(particleSystem);
 
@@ -99,7 +101,7 @@ function updateParticle(
     width: number,
     height: number,
 ): void {
-    const { particles, next, target, grid } = system;
+    const { particles, next, target, claimed, grid } = system;
     const p = particles[i];
     const out = next[i];
 
@@ -116,6 +118,9 @@ function updateParticle(
 
     // Update velocity from gravity (written to out), and find who wants to absorb us
     target[i] = applyNeighborGravity(p, out, grid, params, dt, particles);
+
+    // Mark claimed targets
+    if (target[i] !== NONE) claimed[target[i]] = 1;
 
     // Update position according to velocity
     out.x += out.vx * dt;
@@ -142,6 +147,7 @@ export function updateParticles(
     maxSpeed = 50, // for respawned particles; match what you passed to initParticles
 ): void {
     const { particles } = particleSystem;
+    particleSystem.claimed.fill(0);
 
     // Pass A: gravity + integrate into next[], pick absorbers into target[]
     for (let i = 0; i < particles.length; i++) {
@@ -354,12 +360,12 @@ function shouldAbsorb(a: Particle, b: Particle): boolean {
  */
 function mergeParticle(
     i: number,
-    system: ParticleSystem,
+    particleSystem: ParticleSystem,
     width: number,
     height: number,
     maxSpeed: number,
 ): void {
-    const { particles, next, target, grid } = system;
+    const { particles, next, target, claimed, grid } = particleSystem;
     const cur = particles[i];
     const p = next[i];
     const t = target[i];
@@ -386,7 +392,7 @@ function mergeParticle(
     let py = p.mass * p.vy;
 
     // Only a "root" (not itself a victim) collects mass.
-    if (t === NONE) {
+    if (t === NONE && claimed[i]) {
         // Grid was built from the *old* positions, and so was target[], so look up by cur
         const gx = clampInt(Math.floor(cur.x / grid.cellSize), grid.cols);
         const gy = clampInt(Math.floor(cur.y / grid.cellSize), grid.rows);
