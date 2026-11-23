@@ -1,5 +1,5 @@
 import { Particle, PARTICLE_FLOATS, packParticles } from './particle';
-import { CheckWebGPU } from '../helper';
+import { initWebGPU } from './device';
 import vertexShaderCode from '../shaders/particle.vert.wgsl?raw';
 import fragmentShaderCode from '../shaders/particle.frag.wgsl?raw';
 import trailShaderCode from '../shaders/trail.wgsl?raw';
@@ -23,25 +23,18 @@ export interface Renderer {
 }
 
 /**
- * Set up WebGPU once and return a renderer that draws particles as instanced quads.
+ * Build a renderer on an EXISTING GPUDevice. The caller owns the device and
+ * is expected to share it with other subsystems (e.g. the compute pass).
+ *
  * The instance buffer is allocated once, sized for `maxParticles`.
  */
-export async function createRenderer(
+export function createRenderPipeline(
+    device: GPUDevice,
     canvas: HTMLCanvasElement,
     maxParticles: number,
     options: RendererOptions = {},
-): Promise<Renderer> {
+): Renderer {
     const { clearColor = { r: 0.05, g: 0.05, b: 0.1, a: 1.0 }, trailHalfLife } = options;
-
-    const checkgpu = CheckWebGPU();
-    if (checkgpu.includes('Your current browser does not support WebGPU!')) {
-        console.log(checkgpu);
-        throw new Error('Your current browser does not support WebGPU!');
-    }
-
-    const adapter = await navigator.gpu?.requestAdapter() as GPUAdapter | null;
-    if (!adapter) throw new Error('No GPU adapter found');
-    const device = await adapter.requestDevice() as GPUDevice;
 
     const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
     if (!context) throw new Error('WebGPU context not available');

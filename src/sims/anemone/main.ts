@@ -1,4 +1,5 @@
-import { createRenderer } from '../../core/renderer';
+import { initWebGPU } from '../../core/device';
+import { createRenderPipeline } from '../../core/renderer';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
 import { initSystem, updateParticles, FlockSystem, FlockParams, Mouse } from './simulation';
@@ -42,7 +43,9 @@ const reset = () => {
 };
 
 const main = async () => {
-    const renderer = await createRenderer(canvas, MAX_PARTICLES, {
+    const device = await initWebGPU();
+    if (!device) throw new Error('WebGPU unavailable');
+    const renderer = await createRenderPipeline(device, canvas, MAX_PARTICLES, {
         clearColor: { r: 0, g: 0, b: 0, a: 1 },
         trailHalfLife: TRAIL_HALF_LIFE,
     });

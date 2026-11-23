@@ -7,6 +7,12 @@ Run `npm run dev` in the directory.
 # TODOs
 These are just notes to self. Ignore.
 
+-I'm concerned that plummer softened gravity might cause problems with net spin when collisions are off and many particles are swarming
+
+-For long range interactions:
+    -particle particle particle mesh methods
+    -alternatively, a second lower resolution chunkgrid only storing important (high mass) particles
+
 -move mass into Body and out of Particle. This is because I don't think anemone and gravity sims should have to use the same way of effectively just passing particle size.
     -while im at it, i can make seperate shader functions for them
 
@@ -31,7 +37,7 @@ These are just notes to self. Ignore.
     -damping / no damping
     -velocity dependent drag towards the local mean
     
--particle particle particle mesh methods (long range gravity)
+
 
 -Shaders
     -rendering each particle as a quad (current) vs rendering per pixel. we are rendering each particle as a quad. I want this to be able to handle millions of particles at once, so efficient methods are preferred. My reasoning then is that it would be more efficient to iterate over each particle on the GPU, and add color to the pixels it overlaps with.

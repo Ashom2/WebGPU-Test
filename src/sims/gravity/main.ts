@@ -1,18 +1,20 @@
-import { createRenderer } from '../../core/renderer';
+import { initWebGPU } from '../../core/device';
+import { createRenderPipeline } from '../../core/renderer';
+import { createComputePipeline } from '../../core/compute';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
-import { initSystem, updateParticles, GravitySystem, seedOrbitTest } from './simulation';
+import { initSystem, updateParticles, GravitySystem, seedOrbitTest, seedCloudTest } from './simulation';
 
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 4_000;
-const CELL_SIZE = 64;
+const CELL_SIZE = 128;
 const PARAMS = {
-    G: 10,
+    G: 20,
     softening: 4,
     maxAcceleration: 10000,
     collisionMode: 0,
-    maxMass: 200,
-    explosionSpeed: 200,
+    maxMass: 50,
+    explosionSpeed: 40,
     drag: 1.0,
     spawnImmunity: 0.25,
 };
@@ -28,11 +30,16 @@ let lastTime = 0;
 const reset = () => {
     system = initSystem(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, 50, PARAMS);
     seedOrbitTest(system, canvas.width, canvas.height, 4000, 1000);
+    // seedCloudTest(system, canvas.width, canvas.height)
     lastTime = 0;
 };
 
 const main = async () => {
-    const renderer = await createRenderer(canvas, MAX_PARTICLES);
+    const device = await initWebGPU();
+    if (!device) throw new Error('WebGPU unavailable');
+    const renderer = await createRenderPipeline(device, canvas, MAX_PARTICLES);
+    const compute = await createComputePipeline(device, { maxParticles: 10 });
+
     reset();
 
     /** Use browser dev tools to assess performance (in marker chart), or read the on-screen overlay. */

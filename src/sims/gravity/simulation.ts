@@ -76,14 +76,33 @@ export function seedOrbitTest(system: GravitySystem, width: number, height: numb
         const p = particles[i];
         // Between 16 and 48 px: outside the clamp zone, inside the gravity cutoff
         const r = 16 + Math.random() * 32;
-        const a = Math.random() * Math.PI * 2;
+        const angle = Math.random() * Math.PI * 2;
         // Circular speed for Plummer gravity: v² = G M r² / (r² + ε²)^1.5
         const v = Math.sqrt(params.G * starMass * r * r / Math.pow(r * r + eps2, 1.5));
-        p.mass = 1;
-        p.x = cx + Math.cos(a) * r;  p.y = cy + Math.sin(a) * r;
-        p.vx = -Math.sin(a) * v;     p.vy = Math.cos(a) * v;
+        p.mass = Math.random() * 4;
+        p.x = cx + Math.cos(angle) * r;  p.y = cy + Math.sin(angle) * r;
+        p.vx = -Math.sin(angle) * v;     p.vy = Math.cos(angle) * v;
     }
     updateChunks(system);
+}
+
+export function seedCloudTest(system: GravitySystem, width: number, height: number, cloudRadius = 50) {
+    const { particles, params } = system;
+
+    const cx = width / 2, cy = height / 2;
+    const eps2 = params.softening * params.softening;
+
+    for (const p of particles) { 
+        const r = Math.random() * cloudRadius;
+        const angle = Math.random() * Math.PI * 2;
+
+        // Circular speed for Plummer gravity: v² = G M r² / (r² + ε²)^1.5
+        const v = Math.sqrt(params.G * 400 * r * r / Math.pow(r * r + eps2, 1.5));
+
+        p.mass = Math.random() * 4;
+        p.x = cx + Math.cos(angle) * r;  p.y = cy + Math.sin(angle) * r;
+        p.vx = -Math.sin(angle) * v;     p.vy = Math.cos(angle) * v;
+    }
 }
 
 /** Create a number of randomly spawned particles */
