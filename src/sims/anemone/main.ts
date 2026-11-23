@@ -3,6 +3,7 @@ import { createRenderPipeline } from '../../core/renderer';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
 import { initSystem, updateParticles, FlockSystem, FlockParams, Mouse } from './simulation';
+import { ANEMONE_PARTICLE_FLOATS, ANEMONE_VERTEX_ATTRIBUTES, packAnemoneParticles, } from './particle-layout';
 import particleVert from './shaders/particle.vert.wgsl?raw';
 import particleFrag from './shaders/particle.frag.wgsl?raw';
 import trailShader from './shaders/trail.wgsl?raw';
@@ -52,6 +53,9 @@ const main = async () => {
         clearColor: { r: 0, g: 0, b: 0, a: 1 },
         trailHalfLife: TRAIL_HALF_LIFE,
         shaders: { particleVert, particleFrag, trail: trailShader },
+        particleFloats: ANEMONE_PARTICLE_FLOATS,
+        vertexAttributes: ANEMONE_VERTEX_ATTRIBUTES,
+        packParticles: packAnemoneParticles,
     });
     reset();
 

@@ -1,9 +1,11 @@
 import { initWebGPU } from '../../core/device';
+import { Particle } from '../../core/particle';
 import { createRenderPipeline } from '../../core/renderer';
 import { createComputePipeline } from '../../core/compute';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
 import { initSystem, updateParticles, GravitySystem, seedOrbitTest, seedCloudTest } from './simulation';
+import { GRAVITY_PARTICLE_FLOATS, GRAVITY_VERTEX_ATTRIBUTES, packGravityParticles, } from './particle-layout';
 import particleVert from './shaders/particle.vert.wgsl?raw';
 import particleFrag from './shaders/particle.frag.wgsl?raw';
 
@@ -41,6 +43,9 @@ const main = async () => {
     if (!device) throw new Error('WebGPU unavailable');
     const renderer = await createRenderPipeline(device, canvas, MAX_PARTICLES, {
         shaders: { particleVert, particleFrag },
+        particleFloats: GRAVITY_PARTICLE_FLOATS,
+        vertexAttributes: GRAVITY_VERTEX_ATTRIBUTES,
+        packParticles: packGravityParticles as (p: Particle[]) => Float32Array,
     });
     const compute = await createComputePipeline(device, { maxParticles: 10 });
 

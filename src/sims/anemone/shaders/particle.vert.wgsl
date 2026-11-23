@@ -1,6 +1,5 @@
 struct Particle {
     position: vec2<f32>,
-    mass: f32,
     color: vec4<f32>,
 };
 
@@ -12,17 +11,13 @@ struct VertexOut {
     @location(1)       color    : vec4<f32>,
 };
 
-// NOTE keep in sync with getRadius function on CPU
-fn getRadius(mass: f32) -> f32 {
-    return 0.5 * sqrt(mass);
-}
+const radius = 1.5;
 
 @vertex
 fn main(
     @builtin(vertex_index)   vi       : u32,
     @location(0)             position : vec2<f32>,
-    @location(1)             mass     : f32,
-    @location(2)             color    : vec4<f32>,
+    @location(1)             color    : vec4<f32>,
 ) -> VertexOut {
     // Unit quad (2 triangles) centered at origin
     var quad = array<vec2<f32>, 6>(
@@ -35,7 +30,6 @@ fn main(
     );
 
     let local = quad[vi];
-    let radius = getRadius(mass);
     let pixel = position + local * radius;
 
     // Convert pixel coords to clip space (-1,1)

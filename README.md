@@ -53,6 +53,8 @@ These are just notes to self. Ignore.
     -use the packing / data type I devised in the boids report to help with spatial subdivision
     -chunk optimisation methods kinda conflict with varying incluence radii of larger particles
 
+-Anemone, trails become dots when framerate lowers
+
 # Idea
 Also just notes to self. Ignore.
 

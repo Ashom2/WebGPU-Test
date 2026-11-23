@@ -1,7 +1,5 @@
 import {
     Particle,
-    getRadius,
-    getRadius2,
     randomizeVelocity,
     wrapPosition,
 } from '../../core/particle';
@@ -38,15 +36,16 @@ export interface Params {
     spawnImmunity: number;
 }
 
-/** A particle that remembers when it was born. age = system.time - birthTime */
-export interface Body extends Particle {
+/** A particle that has a mass and remembers when it was born. age = system.time - birthTime */
+export interface GravityBody extends Particle {
+    mass: number;
     birthTime: number;
 }
 
 /** Everything this simulation needs on top of the generic particles + chunk grid. */
-export interface GravitySystem extends ParticleSystem<Body> {
+export interface GravitySystem extends ParticleSystem<GravityBody> {
     // Scratch buffer written by pass A (gravity), read by pass B (merge)
-    next: Body[];
+    next: GravityBody[];
     time: number;
     // target[i] = id of the particle that wants to absorb particle i, or NONE
     target: Int32Array;
@@ -56,6 +55,16 @@ export interface GravitySystem extends ParticleSystem<Body> {
     exploders: Int32Array;   // indices of particles with mass >= params.maxMass
     offsets: Int32Array;     // offsets[e] = first dead-slot rank owned by exploder e (length count+1)
     params: Params;
+}
+
+// NOTE keep in sync with getRadius function in vertex shader
+export function getRadius(particle: GravityBody): number {
+    return 0.5 * Math.sqrt(particle.mass);
+}
+
+// NOTE keep in sync with getRadius
+export function getRadius2(particle: GravityBody): number {
+    return 0.25 * particle.mass;
 }
 
 /** Debug: one heavy star with light particles on circular orbits around it. Everything else is removed. */
@@ -111,12 +120,12 @@ function initParticles(
     width: number,
     height: number,
     spawnSpeed: number,
-): Body[] 
+): GravityBody[] 
 {
-    const particles: Body[] = [];
+    const particles: GravityBody[] = [];
     for (let i = 0; i < count; i++) {
 
-        const p: Body = {
+        const p: GravityBody = {
             id: i,
             x: Math.random() * width, y: Math.random() * height,
             vx: 0, vy: 0,
@@ -139,8 +148,8 @@ export function initSystem(
     spawnSpeed = 50,
     params: Params,
 ): GravitySystem {
-    const particles: Body[] = initParticles(count, width, height, spawnSpeed);
-    const grid = createChunkGrid<Body>(width, height, cellSize);
+    const particles: GravityBody[] = initParticles(count, width, height, spawnSpeed);
+    const grid = createChunkGrid<GravityBody>(width, height, cellSize);
     const next = particles.map((p) => ({ ...p }));
     const target = new Int32Array(count).fill(NONE);
     const claimed = new Uint8Array(count);
@@ -243,12 +252,12 @@ function updateParticle(
  * Returns the id of the strongest neighbor that absorbs thisParticle, or NONE.
  */
 function applyNeighborGravity(
-    thisParticle: Body,
-    out: Body,
-    grid: ChunkGrid<Body>,
+    thisParticle: GravityBody,
+    out: GravityBody,
+    grid: ChunkGrid<GravityBody>,
     params: Params,
     dt: number, // delta time
-    particles: Body[],
+    particles: GravityBody[],
     canBeAbsorbed: boolean,
 ): number {
     const { cellSize } = grid;
@@ -323,7 +332,7 @@ function applyNeighborGravity(
 }
 
 // returns true if `a` should absorb `b` (i.e. a "wins" the pair)
-function shouldAbsorb(a: Body, b: Body): boolean {
+function shouldAbsorb(a: GravityBody, b: GravityBody): boolean {
     // Greater mass
     if (a.mass !== b.mass) return a.mass > b.mass;
     // Or greater age

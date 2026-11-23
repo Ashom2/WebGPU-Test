@@ -1,4 +1,4 @@
-import { Particle, PARTICLE_FLOATS, packParticles } from './particle';
+import { Particle } from './particle';
 
 // Trails live in a float texture: with 8 bits, repeated fading stalls once value * (1 - fade) rounds back to value,
 // which leaves a faint permanent ghost of every trail.
@@ -14,17 +14,28 @@ export interface TrailedRendererShaders extends BaseRendererShaders {
     trail: string;
 }
 
+/**
+ * A sim supplies:
+ *  - its shader sources,
+ *  - its instance packing (layout is per-sim),
+ *  - the vertex attribute descriptor that matches that packing.
+ */
+export interface BaseRendererOptions {
+    shaders: BaseRendererShaders;
+    particleFloats: number;
+    vertexAttributes: GPUVertexAttribute[];
+    packParticles: (particles: Particle[]) => Float32Array;
+    clearColor?: GPUColorDict;
+}
+
+export interface TrailedRendererOptions extends BaseRendererOptions {
+    shaders: TrailedRendererShaders;
+    trailHalfLife: number;
+}
+
 export type RendererOptions =
-    | {
-          shaders: BaseRendererShaders;
-          clearColor?: GPUColorDict;
-          trailHalfLife?: undefined;
-      }
-    | {
-          shaders: TrailedRendererShaders;
-          clearColor?: GPUColorDict;
-          trailHalfLife: number;
-      };
+    | (BaseRendererOptions & { trailHalfLife?: undefined })
+    | TrailedRendererOptions;
 
 export interface Renderer {
     /** Upload the particles and draw one frame. `dt` (seconds) only matters when trails are on. */
@@ -45,6 +56,9 @@ export function createRenderPipeline(
 ): Renderer {
     const {
         shaders,
+        particleFloats,
+        vertexAttributes,
+        packParticles,
         clearColor = { r: 0.05, g: 0.05, b: 0.1, a: 1.0 },
         trailHalfLife,
     } = options;
@@ -73,7 +87,7 @@ export function createRenderPipeline(
     });
 
     // Allocate the instance buffer ONCE, sized for maxParticles.
-    const STRIDE = PARTICLE_FLOATS * 4;
+    const STRIDE = particleFloats * 4;
     const instanceBuffer = device.createBuffer({
         size: maxParticles * STRIDE,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -90,11 +104,7 @@ export function createRenderPipeline(
             buffers: [{
                 arrayStride: STRIDE,
                 stepMode: 'instance',
-                attributes: [
-                    { shaderLocation: 0, offset: 0,  format: 'float32x2' }, // position
-                    { shaderLocation: 1, offset: 8,  format: 'float32'   }, // mass
-                    { shaderLocation: 2, offset: 16, format: 'float32x4' }, // color
-                ],
+                attributes: vertexAttributes,
             }],
         },
         fragment: {
@@ -108,9 +118,7 @@ export function createRenderPipeline(
                 },
             }],
         },
-        primitive: {
-            topology: 'triangle-list',
-        },
+        primitive: { topology: 'triangle-list' },
     });
 
     const bindGroup = device.createBindGroup({

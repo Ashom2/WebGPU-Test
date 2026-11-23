@@ -1,6 +1,5 @@
 import {
     Particle,
-    getRadius,
     wrapPosition,
     randomizeVelocity,
 } from '../../core/particle';
@@ -13,10 +12,6 @@ import {
     cellX,
     cellY,
 } from '../../core/chunks';
-
-// The renderer draws a particle with radius 0.5 * sqrt(mass) px. Radius 1.5 is about as wide as one step
-// at 60 fps with the default speed, so the trails come out unbroken.
-const PARTICLE_MASS = 9;
 
 export interface FlockParams {
     // Constant speed of every particle, px/s
@@ -62,7 +57,6 @@ function initParticles(
             id: i,
             x: Math.random() * width, y: Math.random() * height,
             vx: 0, vy: 0,
-            mass: PARTICLE_MASS,
             r: 1, g: 1, b: 1, a: 1,
         };
         randomizeVelocity(p, params.speed);
@@ -81,7 +75,7 @@ export function initSystem(
 ): FlockSystem {
     const particles = initParticles(count, width, height, params);
 
-    // Colors and mass never change, so both buffers can start as identical copies
+    // Colors never change, so both buffers can start as identical copies
     const next = particles.map((p) => ({ ...p }));
     const grid = createChunkGrid(width, height, cellSize);
     const system: FlockSystem = { particles, grid, next, params };
@@ -184,8 +178,8 @@ function updateParticle(
     out.x = p.x + out.vx * dt;
     out.y = p.y + out.vy * dt;
 
-    // Wrap around (use radius as margin so the circle fully exits first)
-    wrapPosition(out, getRadius(p), width, height);
+    // Wrap around (use
+    wrapPosition(out, 0, width, height);
 }
 
 /**
