@@ -3,6 +3,9 @@ import { createRenderPipeline } from '../../core/renderer';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
 import { initSystem, updateParticles, FlockSystem, FlockParams, Mouse } from './simulation';
+import particleVert from './shaders/particle.vert.wgsl?raw';
+import particleFrag from './shaders/particle.frag.wgsl?raw';
+import trailShader from './shaders/trail.wgsl?raw';
 
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 8_100;
@@ -48,6 +51,7 @@ const main = async () => {
     const renderer = await createRenderPipeline(device, canvas, MAX_PARTICLES, {
         clearColor: { r: 0, g: 0, b: 0, a: 1 },
         trailHalfLife: TRAIL_HALF_LIFE,
+        shaders: { particleVert, particleFrag, trail: trailShader },
     });
     reset();
 

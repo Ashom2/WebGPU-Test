@@ -4,6 +4,8 @@ import { createComputePipeline } from '../../core/compute';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
 import { initSystem, updateParticles, GravitySystem, seedOrbitTest, seedCloudTest } from './simulation';
+import particleVert from './shaders/particle.vert.wgsl?raw';
+import particleFrag from './shaders/particle.frag.wgsl?raw';
 
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 4_000;
@@ -37,7 +39,9 @@ const reset = () => {
 const main = async () => {
     const device = await initWebGPU();
     if (!device) throw new Error('WebGPU unavailable');
-    const renderer = await createRenderPipeline(device, canvas, MAX_PARTICLES);
+    const renderer = await createRenderPipeline(device, canvas, MAX_PARTICLES, {
+        shaders: { particleVert, particleFrag },
+    });
     const compute = await createComputePipeline(device, { maxParticles: 10 });
 
     reset();

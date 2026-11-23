@@ -1,21 +1,30 @@
 import { Particle, PARTICLE_FLOATS, packParticles } from './particle';
-import { initWebGPU } from './device';
-import vertexShaderCode from '../shaders/particle.vert.wgsl?raw';
-import fragmentShaderCode from '../shaders/particle.frag.wgsl?raw';
-import trailShaderCode from '../shaders/trail.wgsl?raw';
 
 // Trails live in a float texture: with 8 bits, repeated fading stalls once value * (1 - fade) rounds back to value,
 // which leaves a faint permanent ghost of every trail.
 const TRAIL_FORMAT: GPUTextureFormat = 'rgba16float';
 
-export interface RendererOptions {
-    clearColor?: GPUColorDict;
-    /**
-     * Leave trails. The previous frame is kept in an offscreen texture and fades toward the clear color,
-     * halving in brightness every `trailHalfLife` seconds. Omit for no trails (the canvas is cleared every frame).
-     */
-    trailHalfLife?: number;
+export interface BaseRendererShaders {
+    particleVert: string;
+    particleFrag: string;
 }
+
+/** Trails are opt-in: if you pass `trailHalfLife`, you must also pass a trail shader. */
+export interface TrailedRendererShaders extends BaseRendererShaders {
+    trail: string;
+}
+
+export type RendererOptions =
+    | {
+          shaders: BaseRendererShaders;
+          clearColor?: GPUColorDict;
+          trailHalfLife?: undefined;
+      }
+    | {
+          shaders: TrailedRendererShaders;
+          clearColor?: GPUColorDict;
+          trailHalfLife: number;
+      };
 
 export interface Renderer {
     /** Upload the particles and draw one frame. `dt` (seconds) only matters when trails are on. */
@@ -24,7 +33,7 @@ export interface Renderer {
 
 /**
  * Build a renderer on an EXISTING GPUDevice. The caller owns the device and
- * is expected to share it with other subsystems (e.g. the compute pass).
+ * is expected to share it with other subsystems (e.g. a per-sim compute pass).
  *
  * The instance buffer is allocated once, sized for `maxParticles`.
  */
@@ -32,9 +41,13 @@ export function createRenderPipeline(
     device: GPUDevice,
     canvas: HTMLCanvasElement,
     maxParticles: number,
-    options: RendererOptions = {},
+    options: RendererOptions,
 ): Renderer {
-    const { clearColor = { r: 0.05, g: 0.05, b: 0.1, a: 1.0 }, trailHalfLife } = options;
+    const {
+        shaders,
+        clearColor = { r: 0.05, g: 0.05, b: 0.1, a: 1.0 },
+        trailHalfLife,
+    } = options;
 
     const context = canvas.getContext('webgpu') as GPUCanvasContext | null;
     if (!context) throw new Error('WebGPU context not available');
@@ -49,7 +62,7 @@ export function createRenderPipeline(
     // With trails, particles are drawn into the offscreen texture instead of straight to the canvas
     const trail = trailHalfLife === undefined
         ? null
-        : createTrailPass(device, canvas, canvasFormat, clearColor, trailHalfLife);
+        : createTrailPass(device, canvas, canvasFormat, clearColor, trailHalfLife, shaders.trail);
     const sceneFormat = trail ? TRAIL_FORMAT : canvasFormat;
     let firstFrame = true;
 
@@ -66,8 +79,8 @@ export function createRenderPipeline(
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
     });
 
-    const vertexModule = device.createShaderModule({ code: vertexShaderCode });
-    const fragmentModule = device.createShaderModule({ code: fragmentShaderCode });
+    const vertexModule = device.createShaderModule({ code: shaders.particleVert });
+    const fragmentModule = device.createShaderModule({ code: shaders.particleFrag });
 
     const pipeline = device.createRenderPipeline({
         layout: 'auto',
@@ -187,8 +200,9 @@ function createTrailPass(
     canvasFormat: GPUTextureFormat,
     clearColor: GPUColorDict,
     halfLife: number,
+    trailShaderSource: string,
 ) {
-    const module = device.createShaderModule({ code: trailShaderCode });
+    const module = device.createShaderModule({ code: trailShaderSource });
 
     // Sized once from the canvas; recreate the renderer if the canvas is resized
     const view = device.createTexture({
