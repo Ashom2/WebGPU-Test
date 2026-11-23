@@ -2,7 +2,6 @@ import {
     Particle,
     getRadius,
     getRadius2,
-    createParticles,
     randomizeVelocity,
     wrapPosition,
 } from '../../core/particle';
@@ -15,8 +14,6 @@ import {
     cellX,
     cellY,
 } from '../../core/chunks';
-
-
 
 // "No target": this particle is not being absorbed by anyone
 const NONE = -1;
@@ -61,7 +58,61 @@ export interface GravitySystem extends ParticleSystem<Body> {
     params: Params;
 }
 
-export function initParticles(
+/** Debug: one heavy star with light particles on circular orbits around it. Everything else is removed. */
+export function seedOrbitTest(system: GravitySystem, width: number, height: number, starMass = 1000, orbiters = 40): void {
+    const { particles, params } = system;
+    system.params = { ...params, maxMass: Infinity, maxAcceleration: 1e6 };
+
+    const cx = width / 2, cy = height / 2;
+    const eps2 = params.softening * params.softening;
+
+    system.params = { ...params, maxMass: Infinity }; // no explosions during the test
+    for (const p of particles) { p.mass = 0; }
+
+    const star = particles[0];
+    star.x = cx; star.y = cy; star.vx = 0; star.vy = 0; star.mass = starMass;
+
+    for (let i = 1; i <= orbiters; i++) {
+        const p = particles[i];
+        // Between 16 and 48 px: outside the clamp zone, inside the gravity cutoff
+        const r = 16 + Math.random() * 32;
+        const a = Math.random() * Math.PI * 2;
+        // Circular speed for Plummer gravity: v² = G M r² / (r² + ε²)^1.5
+        const v = Math.sqrt(params.G * starMass * r * r / Math.pow(r * r + eps2, 1.5));
+        p.mass = 1;
+        p.x = cx + Math.cos(a) * r;  p.y = cy + Math.sin(a) * r;
+        p.vx = -Math.sin(a) * v;     p.vy = Math.cos(a) * v;
+    }
+    updateChunks(system);
+}
+
+/** Create a number of randomly spawned particles */
+function initParticles(
+    count: number,
+    width: number,
+    height: number,
+    spawnSpeed: number,
+): Body[] 
+{
+    const particles: Body[] = [];
+    for (let i = 0; i < count; i++) {
+
+        const p: Body = {
+            id: i,
+            x: Math.random() * width, y: Math.random() * height,
+            vx: 0, vy: 0,
+            mass: 1,
+            r: Math.random(), g: Math.random(), b: Math.random(), a: 1,
+            birthTime: 0,
+        };
+        randomizeVelocity(p, spawnSpeed);
+        particles.push(p);
+    }
+
+    return particles;
+}
+
+export function initSystem(
     count: number,
     width: number,
     height: number,
@@ -69,8 +120,7 @@ export function initParticles(
     spawnSpeed = 50,
     params: Params,
 ): GravitySystem {
-    const particles: Body[] = createParticles(count, width, height, spawnSpeed)
-    .map((p) => ({ ...p, birthTime: 0 }));
+    const particles: Body[] = initParticles(count, width, height, spawnSpeed);
     const grid = createChunkGrid<Body>(width, height, cellSize);
     const next = particles.map((p) => ({ ...p }));
     const target = new Int32Array(count).fill(NONE);
@@ -363,6 +413,8 @@ function fillDeadSlot(r: number, system: GravitySystem, numExploding: number): v
     child.birthTime = system.time;
     child.r = parent.r; child.g = parent.g; child.b = parent.b; child.a = parent.a;
     randomizeVelocity(child, params.explosionSpeed);
+    child.vx += parent.vx;
+    child.vy += parent.vy;
 }
 
 /** The exploder's own slot becomes the last fragment. Writes only its own slot. */
@@ -370,5 +422,7 @@ function finishExplosion(e: number, system: GravitySystem): void {
     const p = system.particles[system.exploders[e]];
     p.mass = 1;
     p.birthTime = system.time;
+    const vx = p.vx, vy = p.vy;
     randomizeVelocity(p, system.params.explosionSpeed);
+    p.vx += vx; p.vy += vy;
 }

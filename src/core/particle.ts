@@ -27,48 +27,6 @@ export function randomizeVelocity(p: Particle, maxSpeed: number): void {
     p.vy = Math.sin(angle) * speed;
 }
 
-/**
- * Give a particle a fresh random position, velocity, color, and mass 1.
- * Writes only to `p` (keeps its id), so it's safe to call from a per-particle pass.
- */
-export function spawnParticle(
-    p: Particle,
-    width: number,
-    height: number,
-    spawnSpeed: number,
-): void {
-    p.x = Math.random() * width;
-    p.y = Math.random() * height;
-    randomizeVelocity(p, spawnSpeed);
-    p.mass = 1;
-    p.r = Math.random();
-    p.g = Math.random();
-    p.b = Math.random();
-    p.a = 1.0;
-}
-
-/** Create `count` randomly spawned particles. Invariant: particles[i].id === i */
-export function createParticles(
-    count: number,
-    width: number,
-    height: number,
-    spawnSpeed: number,
-): Particle[] {
-    const particles: Particle[] = [];
-    for (let i = 0; i < count; i++) {
-        const p: Particle = {
-            id: i,
-            x: 0, y: 0,
-            vx: 0, vy: 0,
-            mass: 1,
-            r: 0, g: 0, b: 0, a: 1,
-        };
-        spawnParticle(p, width, height, spawnSpeed);
-        particles.push(p);
-    }
-    return particles;
-}
-
 /** Toroidal wrap. `margin` is how far past an edge the particle may go before it reappears on the other side. */
 export function wrapPosition(
     p: Particle,

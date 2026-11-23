@@ -1,8 +1,8 @@
 import {
     Particle,
     getRadius,
-    createParticles,
     wrapPosition,
+    randomizeVelocity,
 } from '../../core/particle';
 import {
     ChunkGrid,
@@ -49,22 +49,37 @@ export interface FlockSystem extends ParticleSystem {
     params: FlockParams;
 }
 
-export function initParticles(
+/** Create a number of randomly spawned particles */
+function initParticles(
+    count: number,
+    width: number,
+    height: number,
+    params: FlockParams,
+): Particle[] {
+    const particles: Particle[] = [];
+    for (let i = 0; i < count; i++) {
+        const p: Particle = {
+            id: i,
+            x: Math.random() * width, y: Math.random() * height,
+            vx: 0, vy: 0,
+            mass: PARTICLE_MASS,
+            r: 1, g: 1, b: 1, a: 1,
+        };
+        randomizeVelocity(p, params.speed);
+        particles.push(p);
+    }
+
+    return particles;
+}
+
+export function initSystem(
     count: number,
     width: number,
     height: number,
     cellSize = 16,
     params: FlockParams,
 ): FlockSystem {
-    const particles = createParticles(count, width, height, params.speed);
-    for (const p of particles) {
-        // White, and exactly `speed` in a random direction (speed is constant from here on)
-        p.mass = PARTICLE_MASS;
-        p.r = 1; p.g = 1; p.b = 1;
-        const angle = Math.random() * Math.PI * 2;
-        p.vx = Math.cos(angle) * params.speed;
-        p.vy = Math.sin(angle) * params.speed;
-    }
+    const particles = initParticles(count, width, height, params);
 
     // Colors and mass never change, so both buffers can start as identical copies
     const next = particles.map((p) => ({ ...p }));

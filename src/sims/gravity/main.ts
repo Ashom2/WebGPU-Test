@@ -1,18 +1,18 @@
 import { createRenderer } from '../../core/renderer';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
-import { initParticles, updateParticles, GravitySystem } from './simulation';
+import { initSystem, updateParticles, GravitySystem, seedOrbitTest } from './simulation';
 
 const MAX_PARTICLES = 10_000;
-const PARTICLE_COUNT = 10_000;
-const CELL_SIZE = 32;
+const PARTICLE_COUNT = 4_000;
+const CELL_SIZE = 64;
 const PARAMS = {
-    G: 200,
+    G: 10,
     softening: 4,
-    maxAcceleration: 100,
-    collisionMode: 1,
-    maxMass: 100,
-    explosionSpeed: 100,
+    maxAcceleration: 10000,
+    collisionMode: 0,
+    maxMass: 200,
+    explosionSpeed: 200,
     drag: 1.0,
     spawnImmunity: 0.25,
 };
@@ -26,8 +26,8 @@ let system: GravitySystem;
 let lastTime = 0;
 
 const reset = () => {
-    system = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, 50, PARAMS);
-    // Reset clock
+    system = initSystem(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, 50, PARAMS);
+    seedOrbitTest(system, canvas.width, canvas.height, 4000, 1000);
     lastTime = 0;
 };
 

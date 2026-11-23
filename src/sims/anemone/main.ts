@@ -1,7 +1,7 @@
 import { createRenderer } from '../../core/renderer';
 import { createStatsOverlay } from '../../core/stats';
 import { updateChunks } from '../../core/chunks';
-import { initParticles, updateParticles, FlockSystem, FlockParams, Mouse } from './simulation';
+import { initSystem, updateParticles, FlockSystem, FlockParams, Mouse } from './simulation';
 
 const MAX_PARTICLES = 10_000;
 const PARTICLE_COUNT = 8_100;
@@ -36,7 +36,7 @@ let system: FlockSystem;
 let lastTime = 0;
 
 const reset = () => {
-    system = initParticles(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, PARAMS);
+    system = initSystem(PARTICLE_COUNT, canvas.width, canvas.height, CELL_SIZE, PARAMS);
     // Reset clock
     lastTime = 0;
 };
